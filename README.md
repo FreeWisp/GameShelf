@@ -30,16 +30,6 @@ L'app risponde alla crescente frammentazione delle librerie digitali e al fenome
 
 ---
 
-## 📊 Analisi della Concorrenza
-
-| Competitor | Punti di Forza | Limiti |
-| :--- | :--- | :--- |
-| **Backloggd** | Community attiva, diario dettagliato, estetica moderna. | Molto web-oriented; app mobile non ottimale. |
-| **GameTrack** | Importa trofei (PSN/Steam/Xbox), tracker avanzato. | Interfaccia complessa e affollata per utenti casual. |
-| **Stash** | Eccellente discovery e gamification (leaderboard). | Organizzazione del backlog meno strutturata. |
-
----
-
 ##  Perché GamesShelf è diversa?
 
 * **Navigazione per "Saghe Videoludiche":** Poniamo l'accento sulla continuità. Segui il tuo progresso in intere serie (es. *God of War*) invece di singoli titoli isolati.
