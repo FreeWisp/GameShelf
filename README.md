@@ -57,10 +57,10 @@ Per approfondimenti sul design, roadmap di sviluppo e asset grafici, consulta la
 ---
 
 ##  Tech Stack
-- **Frontend:** Flutter / React Native
-- **Backend:** Node.js / Firebase
-- **Database:** PostgreSQL / MongoDB
+- **Frontend:**  React Native
+- **Backend:**  Node.js 
+- **Database:**  PostgreSQL 
 
 ---
 
-© 2024 GamesShelf Team - *Organize your play, master your time.*
+© 2026 GamesShelf Team - *Organize your play, master your time.*
