@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, RefreshControl, Text, TextInput, View,
+  ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -14,8 +14,13 @@ const FILTERS = [
   { key: 'tutti', label: 'TUTTI' },
   { key: 'in_corso', label: 'DA CONTINUARE' },
   { key: 'completato', label: 'COMPLETATI' },
+  { key: 'preferiti', label: 'PREFERITI' },
+  { key: 'wishlist', label: 'WISHLIST' },
   { key: 'cartelle', label: 'CARTELLE' },
 ];
+
+const WISHLIST_BADGE = { label: 'WISHLIST', color: '#3B82F6', icon: '♡' };
+const FAV_BADGE = { label: 'PREFERITO', color: '#EF4444', icon: '★' };
 
 export default function Home() {
   const { colors } = useTheme();
@@ -26,8 +31,8 @@ export default function Home() {
   const [filter, setFilter] = useState('tutti');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [folderModal, setFolderModal] = useState(false);
-  const [newFolder, setNewFolder] = useState('');
+  const [folderModal, setFolderModal] = useState(null); // { mode:'create'|'rename', target? } | null
+  const [folderName, setFolderName] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -40,32 +45,51 @@ export default function Home() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const completed = library.filter((e) => e.stato_avanzamento === 'completato').length;
-  const filtered = filter === 'tutti' || filter === 'cartelle'
-    ? library
-    : library.filter((e) => e.stato_avanzamento === filter);
+  const owned = library.filter((e) => e.owned);
+  const completed = owned.filter((e) => e.stato_avanzamento === 'completato').length;
 
-  const createFolder = () => { setNewFolder(''); setFolderModal(true); };
+  const filtered =
+    filter === 'tutti' ? owned
+    : filter === 'in_corso' ? owned.filter((e) => e.stato_avanzamento === 'in_corso')
+    : filter === 'completato' ? owned.filter((e) => e.stato_avanzamento === 'completato')
+    : filter === 'preferiti' ? library.filter((e) => e.flag_preferito)
+    : filter === 'wishlist' ? library.filter((e) => e.in_wishlist)
+    : library;
+
+  // ----- folder create / rename modal -----
+  const openCreate = () => { setFolderName(''); setFolderModal({ mode: 'create' }); };
+  const openRename = (name) => { setFolderName(name); setFolderModal({ mode: 'rename', target: name }); };
   const submitFolder = async () => {
-    const name = newFolder.trim();
+    const name = folderName.trim();
     if (!name) return;
-    try { await api.createFolder(name); setFolderModal(false); load(); }
-    catch (e) { Alert.alert('Errore', e.message); }
+    try {
+      if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.target, name);
+      else await api.createFolder(name);
+      setFolderModal(null);
+      load();
+    } catch (e) { Alert.alert('Errore', e.message); }
   };
+  const folderActions = (name) => Alert.alert(name, 'Cosa vuoi fare con questa mensola?', [
+    { text: 'Rinomina', onPress: () => openRename(name) },
+    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(name); load(); } },
+    { text: 'Annulla', style: 'cancel' },
+  ]);
 
   const FolderModal = (
-    <Modal visible={folderModal} transparent animationType="fade" onRequestClose={() => setFolderModal(false)}>
-      <Pressable onPress={() => setFolderModal(false)} style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 28 }}>
+    <Modal visible={!!folderModal} transparent animationType="fade" onRequestClose={() => setFolderModal(null)}>
+      <Pressable onPress={() => setFolderModal(null)} style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 28 }}>
         <Pressable onPress={() => {}} style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20 }}>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, marginBottom: 14 }}>Nuova mensola</Text>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, marginBottom: 14 }}>
+            {folderModal?.mode === 'rename' ? 'Rinomina mensola' : 'Nuova mensola'}
+          </Text>
           <TextInput
             style={{ backgroundColor: colors.surfaceAlt, color: colors.text, borderRadius: 10, padding: 12, marginBottom: 16 }}
             placeholder="Es. Saga di Final Fantasy" placeholderTextColor={colors.textMuted}
-            value={newFolder} onChangeText={setNewFolder} autoFocus onSubmitEditing={submitFolder}
+            value={folderName} onChangeText={setFolderName} autoFocus onSubmitEditing={submitFolder}
           />
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
-            <Pressable onPress={() => setFolderModal(false)}><Text style={{ color: colors.textMuted, fontWeight: '700' }}>Annulla</Text></Pressable>
-            <Pressable onPress={submitFolder}><Text style={{ color: colors.primary, fontWeight: '700' }}>Crea</Text></Pressable>
+            <Pressable onPress={() => setFolderModal(null)}><Text style={{ color: colors.textMuted, fontWeight: '700' }}>Annulla</Text></Pressable>
+            <Pressable onPress={submitFolder}><Text style={{ color: colors.primary, fontWeight: '700' }}>{folderModal?.mode === 'rename' ? 'Salva' : 'Crea'}</Text></Pressable>
           </View>
         </Pressable>
       </Pressable>
@@ -83,7 +107,7 @@ export default function Home() {
               </View>}
           <View>
             <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>{user?.username}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{library.length} in libreria · {completed} completati</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{owned.length} in libreria · {completed} completati</Text>
           </View>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 18 }}>
@@ -92,7 +116,7 @@ export default function Home() {
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 18, marginBottom: 16 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 18, paddingRight: 16 }} style={{ marginBottom: 16 }}>
         {FILTERS.map((f) => (
           <Pressable key={f.key} onPress={() => setFilter(f.key)}>
             <Text style={{
@@ -102,7 +126,7 @@ export default function Home() {
             }}>{f.label}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
     </View>
   );
 
@@ -120,7 +144,7 @@ export default function Home() {
           keyExtractor={(f) => f.nome_cartella}
           contentContainerStyle={{ padding: 16, gap: 12 }}
           ListHeaderComponent={
-            <Pressable onPress={createFolder}
+            <Pressable onPress={openCreate}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 4 }}>
               <Ionicons name="add-circle" size={24} color={colors.primary} />
               <Text style={{ color: colors.text, fontWeight: '700' }}>Crea nuova mensola</Text>
@@ -128,20 +152,23 @@ export default function Home() {
           }
           renderItem={({ item }) => (
             <Pressable
-              onLongPress={() => Alert.alert(item.nome_cartella, 'Eliminare questa mensola?', [
-                { text: 'Annulla' },
-                { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(item.nome_cartella); load(); } },
-              ])}
+              onPress={() => router.push(`/folder/${encodeURIComponent(item.nome_cartella)}`)}
+              onLongPress={() => folderActions(item.nome_cartella)}
               style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>📚 {item.nome_cartella}</Text>
-                <Text style={{ color: colors.textMuted }}>{item.count} giochi</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }}>📚 {item.nome_cartella}</Text>
+                <Text style={{ color: colors.textMuted, marginRight: 12 }}>{item.count} giochi</Text>
+                <Pressable onPress={() => openRename(item.nome_cartella)} hitSlop={10}><Ionicons name="create-outline" size={18} color={colors.textMuted} /></Pressable>
               </View>
               {item.giochi?.length > 0 && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
                   {item.giochi.slice(0, 5).map((g) => <GameCover key={g.id_gioco} url={g.copertina_url} size="sm" />)}
                 </View>
               )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 }}>
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Apri e gestisci</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+              </View>
             </Pressable>
           )}
           ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 40 }}>Nessuna mensola. Creane una per organizzare i tuoi giochi.</Text>}
@@ -171,6 +198,14 @@ export default function Home() {
     );
   }
 
+  const emptyMsg = {
+    tutti: 'Nessun gioco posseduto. Aggiungine dalla ricerca.',
+    in_corso: 'Nessun gioco in corso.',
+    completato: 'Nessun gioco completato.',
+    preferiti: 'Nessun preferito. Tocca il cuore su una scheda gioco.',
+    wishlist: 'Wishlist vuota. Aggiungi i giochi che desideri.',
+  }[filter];
+
   // ---- Game grid ----
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -182,15 +217,17 @@ export default function Home() {
         columnWrapperStyle={{ paddingHorizontal: 12, gap: 8 }}
         contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+        ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 30 }}>{emptyMsg}</Text>}
         renderItem={({ item }) => {
-          const meta = STATUS_META[item.stato_avanzamento];
+          const badge = item.owned ? STATUS_META[item.stato_avanzamento]
+            : item.in_wishlist ? WISHLIST_BADGE : FAV_BADGE;
           return (
             <Pressable style={{ flex: 1 / 3, maxWidth: '32%' }} onPress={() => router.push(`/game/${item.game.id_gioco}`)}>
               <View>
                 <GameCover url={item.game.copertina_url} size="md" style={{ width: '100%', height: 150 }} />
                 {item.flag_preferito ? <Ionicons name="heart" size={16} color={colors.danger} style={{ position: 'absolute', top: 6, right: 6 }} /> : null}
                 <View style={{ position: 'absolute', bottom: 6, left: 6, backgroundColor: '#000A', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                  <Text style={{ color: meta.color, fontSize: 9, fontWeight: '700' }}>{meta.icon} {meta.label}</Text>
+                  <Text style={{ color: badge.color, fontSize: 9, fontWeight: '700' }}>{badge.icon} {badge.label}</Text>
                 </View>
               </View>
               <Text numberOfLines={1} style={{ color: colors.text, fontSize: 11, fontWeight: '600', marginTop: 4 }}>{item.game.titolo}</Text>
@@ -198,6 +235,7 @@ export default function Home() {
           );
         }}
       />
+      {FolderModal}
     </SafeAreaView>
   );
 }

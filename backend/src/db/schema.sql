@@ -63,8 +63,9 @@ CREATE TABLE IF NOT EXISTS Libreria_Utente (
   store_acquisto    TEXT,                        -- steam | epic | microsoft | ...
   data_aggiunta     TEXT DEFAULT (datetime('now')),
   note_testuali     TEXT,
-  flag_preferito    INTEGER DEFAULT 0,
-  in_wishlist       INTEGER DEFAULT 0,
+  owned             INTEGER DEFAULT 0,   -- posseduto / nel backlog
+  flag_preferito    INTEGER DEFAULT 0,   -- preferito (indipendente)
+  in_wishlist       INTEGER DEFAULT 0,   -- in wishlist (indipendente)
   community_cache   TEXT DEFAULT '{}',   -- per-user Steam achievements/stats
   UNIQUE(id_utente, id_gioco)
 );

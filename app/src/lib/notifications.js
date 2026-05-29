@@ -1,51 +1,64 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api';
 
-// Foreground notifications: show banner + play sound.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Expo Go (storeClient) removed remote push on Android since SDK 53. Even just
+// *importing* expo-notifications there triggers a console error (its
+// TokenAutoRegistration side-effect registers a push-token listener on import).
+// So in Expo Go we never import the module at all — notifications simply no-op.
+// In a dev/standalone build everything works (lazy-loaded below).
+const isExpoGo =
+  Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
-async function ensurePermission() {
-  const { status } = await Notifications.getPermissionsAsync();
+let Notifications = null;
+async function loadNotifications() {
+  if (isExpoGo) return null;
+  if (!Notifications) {
+    Notifications = await import('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  }
+  return Notifications;
+}
+
+async function ensurePermission(N) {
+  const { status } = await N.getPermissionsAsync();
   if (status === 'granted') return true;
-  const req = await Notifications.requestPermissionsAsync();
+  const req = await N.requestPermissionsAsync();
   return req.status === 'granted';
 }
 
 /**
- * Ask permission, obtain an Expo push token and register it on the backend so
- * the server can push Epic free-game alerts. Remote push needs a dev/standalone
- * build with an EAS projectId; in Expo Go this may be unavailable, in which case
- * we still rely on local notifications (see notifyEpicFree).
+ * Register an Expo push token on the backend (dev/standalone builds only).
+ * No-op in Expo Go.
  */
 export async function registerPushNotifications() {
+  const N = await loadNotifications();
+  if (!N) return null;
   try {
+    const Device = await import('expo-device');
     if (!Device.isDevice) return null;
-    if (!(await ensurePermission())) return null;
+    if (!(await ensurePermission(N))) return null;
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
+      await N.setNotificationChannelAsync('default', {
         name: 'GameShelf',
-        importance: Notifications.AndroidImportance.HIGH,
+        importance: N.AndroidImportance.HIGH,
         lightColor: '#7C5CFF',
       });
     }
-
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-    if (!projectId) return null; // can't get a remote token without an EAS project
+    if (!projectId) return null;
 
-    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const { data: token } = await N.getExpoPushTokenAsync({ projectId });
     if (token) await api.registerPushToken(token).catch(() => {});
     return token;
   } catch {
@@ -54,13 +67,14 @@ export async function registerPushNotifications() {
 }
 
 /**
- * Local fallback that works everywhere (incl. Expo Go): compares the current
- * Epic free games against what we last saw and fires a local notification for
- * any new free title.
+ * Local notification for new Epic free games. Works in dev/standalone builds;
+ * in Expo Go it's a no-op (the free games are still shown in the News tab).
  */
 export async function notifyEpicFreeLocally() {
+  const N = await loadNotifications();
+  if (!N) return;
   try {
-    if (!(await ensurePermission())) return;
+    if (!(await ensurePermission(N))) return;
     const { free } = await api.epicFree();
     if (!free?.length) return;
 
@@ -70,13 +84,13 @@ export async function notifyEpicFreeLocally() {
     if (!fresh.length) return;
 
     const titles = fresh.map((g) => g.title).join(', ');
-    await Notifications.scheduleNotificationAsync({
+    await N.scheduleNotificationAsync({
       content: {
         title: '🎁 Nuovi giochi gratis su Epic!',
         body: fresh.length === 1 ? `${titles} è gratis ora su Epic Games.` : `Gratis ora: ${titles}`,
         data: { type: 'epic_free' },
       },
-      trigger: null, // deliver immediately
+      trigger: null,
     });
 
     const updated = [...seen, ...fresh.map((g) => g.id)];

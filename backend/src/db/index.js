@@ -16,12 +16,21 @@ const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schema);
 
 // --- lightweight idempotent migrations (for DBs created before a column existed) ---
+// `after` runs only the first time the column is added (one-time backfill).
 const migrations = [
-  "ALTER TABLE Libreria_Utente ADD COLUMN community_cache TEXT DEFAULT '{}'",
-  'ALTER TABLE Utente ADD COLUMN steam_id TEXT',
+  { sql: "ALTER TABLE Libreria_Utente ADD COLUMN community_cache TEXT DEFAULT '{}'" },
+  { sql: 'ALTER TABLE Utente ADD COLUMN steam_id TEXT' },
+  {
+    sql: 'ALTER TABLE Libreria_Utente ADD COLUMN owned INTEGER DEFAULT 0',
+    // Pre-existing entries that aren't wishlist were "owned" in the old model.
+    after: 'UPDATE Libreria_Utente SET owned = 1 WHERE in_wishlist = 0',
+  },
 ];
-for (const sql of migrations) {
-  try { db.exec(sql); } catch (e) {
+for (const m of migrations) {
+  try {
+    db.exec(m.sql);
+    if (m.after) db.exec(m.after);
+  } catch (e) {
     if (!/duplicate column name/i.test(e.message)) throw e;
   }
 }
