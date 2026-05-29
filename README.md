@@ -49,7 +49,7 @@ Per approfondimenti sul design, roadmap di sviluppo e asset grafici, consulta la
 ##  Tech Stack
 - **Frontend:**  React Native
 - **Backend:**  Node.js 
-- **Database:**  PostgreSQL 
+- **Database:**  SQLite 
 
 ---
 
