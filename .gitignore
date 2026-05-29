@@ -1,8 +1,21 @@
+# Dependencies
 node_modules/
+
+# Expo / React Native
 .expo/
 dist/
 dist-check/
+web-build/
+
+# Logs
 *.log
+
+# Environment / secrets
 .env
+
+# SQLite database (centralized, regenerated via `npm run seed`)
 backend/data/*.db
 backend/data/*.db-*
+
+# OS
+.DS_Store
