@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "GameShelf",
+    "slug": "gameshelf",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "gameshelf",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "GameShelf usa la fotocamera per scansionare i QR dei profili.",
+        "NSPhotoLibraryUsageDescription": "GameShelf accede alle foto per immagine profilo e diario."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0E0E12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      "expo-image-picker",
+      "expo-web-browser",
+      ["expo-notifications", { "color": "#7C5CFF" }]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

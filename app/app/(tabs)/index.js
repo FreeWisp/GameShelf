@@ -1,0 +1,203 @@
+import { useCallback, useState } from 'react';
+import {
+  ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, RefreshControl, Text, TextInput, View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { api } from '../../src/api';
+import { useAuth } from '../../src/context/AuthContext';
+import { useTheme } from '../../src/context/ThemeContext';
+import { GameCover, STATUS_META } from '../../src/components/common';
+
+const FILTERS = [
+  { key: 'tutti', label: 'TUTTI' },
+  { key: 'in_corso', label: 'DA CONTINUARE' },
+  { key: 'completato', label: 'COMPLETATI' },
+  { key: 'cartelle', label: 'CARTELLE' },
+];
+
+export default function Home() {
+  const { colors } = useTheme();
+  const { user } = useAuth();
+  const router = useRouter();
+  const [library, setLibrary] = useState([]);
+  const [folders, setFolders] = useState([]);
+  const [filter, setFilter] = useState('tutti');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [folderModal, setFolderModal] = useState(false);
+  const [newFolder, setNewFolder] = useState('');
+
+  const load = useCallback(async () => {
+    try {
+      const [lib, fld] = await Promise.all([api.library(), api.folders()]);
+      setLibrary(lib.library);
+      setFolders(fld.folders);
+    } catch (e) { /* ignore */ }
+    finally { setLoading(false); setRefreshing(false); }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const completed = library.filter((e) => e.stato_avanzamento === 'completato').length;
+  const filtered = filter === 'tutti' || filter === 'cartelle'
+    ? library
+    : library.filter((e) => e.stato_avanzamento === filter);
+
+  const createFolder = () => { setNewFolder(''); setFolderModal(true); };
+  const submitFolder = async () => {
+    const name = newFolder.trim();
+    if (!name) return;
+    try { await api.createFolder(name); setFolderModal(false); load(); }
+    catch (e) { Alert.alert('Errore', e.message); }
+  };
+
+  const FolderModal = (
+    <Modal visible={folderModal} transparent animationType="fade" onRequestClose={() => setFolderModal(false)}>
+      <Pressable onPress={() => setFolderModal(false)} style={{ flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 28 }}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 20 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, marginBottom: 14 }}>Nuova mensola</Text>
+          <TextInput
+            style={{ backgroundColor: colors.surfaceAlt, color: colors.text, borderRadius: 10, padding: 12, marginBottom: 16 }}
+            placeholder="Es. Saga di Final Fantasy" placeholderTextColor={colors.textMuted}
+            value={newFolder} onChangeText={setNewFolder} autoFocus onSubmitEditing={submitFolder}
+          />
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 16 }}>
+            <Pressable onPress={() => setFolderModal(false)}><Text style={{ color: colors.textMuted, fontWeight: '700' }}>Annulla</Text></Pressable>
+            <Pressable onPress={submitFolder}><Text style={{ color: colors.primary, fontWeight: '700' }}>Crea</Text></Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
+  const Header = (
+    <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Pressable onPress={() => router.push('/profile')} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {user?.immagine_profilo
+            ? <Image source={{ uri: user.immagine_profilo }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+            : <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#fff', fontWeight: '800' }}>{user?.username?.slice(0, 2).toUpperCase()}</Text>
+              </View>}
+          <View>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16 }}>{user?.username}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{library.length} in libreria · {completed} completati</Text>
+          </View>
+        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 18 }}>
+          <Pressable onPress={() => router.push('/(tabs)/search')}><Ionicons name="search" size={22} color={colors.text} /></Pressable>
+          <Pressable onPress={() => router.push('/settings')}><Ionicons name="settings-outline" size={22} color={colors.text} /></Pressable>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 18, marginBottom: 16 }}>
+        {FILTERS.map((f) => (
+          <Pressable key={f.key} onPress={() => setFilter(f.key)}>
+            <Text style={{
+              color: filter === f.key ? colors.primary : colors.textMuted,
+              fontWeight: '700', fontSize: 13,
+              borderBottomWidth: filter === f.key ? 2 : 0, borderBottomColor: colors.primary, paddingBottom: 4,
+            }}>{f.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
+  if (loading) {
+    return <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center' }}><ActivityIndicator color={colors.primary} size="large" /></SafeAreaView>;
+  }
+
+  // ---- CARTELLE view ----
+  if (filter === 'cartelle') {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+        {Header}
+        <FlatList
+          data={folders}
+          keyExtractor={(f) => f.nome_cartella}
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          ListHeaderComponent={
+            <Pressable onPress={createFolder}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 4 }}>
+              <Ionicons name="add-circle" size={24} color={colors.primary} />
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Crea nuova mensola</Text>
+            </Pressable>
+          }
+          renderItem={({ item }) => (
+            <Pressable
+              onLongPress={() => Alert.alert(item.nome_cartella, 'Eliminare questa mensola?', [
+                { text: 'Annulla' },
+                { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(item.nome_cartella); load(); } },
+              ])}
+              style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>📚 {item.nome_cartella}</Text>
+                <Text style={{ color: colors.textMuted }}>{item.count} giochi</Text>
+              </View>
+              {item.giochi?.length > 0 && (
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                  {item.giochi.slice(0, 5).map((g) => <GameCover key={g.id_gioco} url={g.copertina_url} size="sm" />)}
+                </View>
+              )}
+            </Pressable>
+          )}
+          ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 40 }}>Nessuna mensola. Creane una per organizzare i tuoi giochi.</Text>}
+        />
+        {FolderModal}
+      </SafeAreaView>
+    );
+  }
+
+  // ---- Empty state for a brand-new user ----
+  if (library.length === 0) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+        {Header}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Ionicons name="library-outline" size={72} color={colors.textMuted} />
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 16, textAlign: 'center' }}>La tua mensola è vuota</Text>
+          <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
+            Aggiungi il tuo primo gioco cercandolo, oppure crea una mensola per organizzare la collezione.
+          </Text>
+          <Pressable onPress={() => router.push('/(tabs)/search')}
+            style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, marginTop: 24 }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Cerca un gioco</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ---- Game grid ----
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      <FlatList
+        data={filtered}
+        numColumns={3}
+        keyExtractor={(e) => String(e.id_possesso)}
+        ListHeaderComponent={Header}
+        columnWrapperStyle={{ paddingHorizontal: 12, gap: 8 }}
+        contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
+        renderItem={({ item }) => {
+          const meta = STATUS_META[item.stato_avanzamento];
+          return (
+            <Pressable style={{ flex: 1 / 3, maxWidth: '32%' }} onPress={() => router.push(`/game/${item.game.id_gioco}`)}>
+              <View>
+                <GameCover url={item.game.copertina_url} size="md" style={{ width: '100%', height: 150 }} />
+                {item.flag_preferito ? <Ionicons name="heart" size={16} color={colors.danger} style={{ position: 'absolute', top: 6, right: 6 }} /> : null}
+                <View style={{ position: 'absolute', bottom: 6, left: 6, backgroundColor: '#000A', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                  <Text style={{ color: meta.color, fontSize: 9, fontWeight: '700' }}>{meta.icon} {meta.label}</Text>
+                </View>
+              </View>
+              <Text numberOfLines={1} style={{ color: colors.text, fontSize: 11, fontWeight: '600', marginTop: 4 }}>{item.game.titolo}</Text>
+            </Pressable>
+          );
+        }}
+      />
+    </SafeAreaView>
+  );
+}

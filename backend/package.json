@@ -1,0 +1,21 @@
+{
+  "name": "gameshelf-backend",
+  "version": "1.0.0",
+  "description": "GameShelf centralized backend — Express + SQLite + Queue-based Load Leveling, proxy for IGDB/Steam APIs",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1"
+  }
+}
