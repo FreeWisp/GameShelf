@@ -172,9 +172,26 @@ export default function Profile() {
           ) : (
             <SafeAreaView style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
               <Text style={{ color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 16 }}>Profilo scansionato</Text>
-              <Text style={{ color: '#fff', fontSize: 16 }}>👤 {scanned.username ?? scanned.raw}</Text>
-              {scanned.giochi_giocati != null && <Text style={{ color: '#ccc', marginTop: 8 }}>🎮 Giochi giocati: {scanned.giochi_giocati}</Text>}
-              {scanned.completati != null && <Text style={{ color: '#ccc', marginTop: 4 }}>🏆 Completati: {scanned.completati}</Text>}
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>👤 {scanned.username ?? scanned.raw}</Text>
+              <View style={{ flexDirection: 'row', gap: 20, marginTop: 12 }}>
+                <Text style={{ color: '#ccc' }}>🎮 Posseduti: <Text style={{ color: '#fff', fontWeight: '700' }}>{scanned.posseduti ?? scanned.giochi_giocati ?? 0}</Text></Text>
+                <Text style={{ color: '#ccc' }}>🏆 Completati: <Text style={{ color: '#fff', fontWeight: '700' }}>{scanned.completati ?? 0}</Text></Text>
+              </View>
+              {scanned.top_completati?.length > 0 && (
+                <View style={{ marginTop: 18 }}>
+                  <Text style={{ color: '#9A9AAE', fontWeight: '700', marginBottom: 6 }}>Completati di recente</Text>
+                  {scanned.top_completati.map((t) => <Text key={t} style={{ color: '#fff', marginTop: 2 }}>🏆 {t}</Text>)}
+                </View>
+              )}
+              {scanned.top_posseduti?.length > 0 && (
+                <View style={{ marginTop: 16 }}>
+                  <Text style={{ color: '#9A9AAE', fontWeight: '700', marginBottom: 6 }}>Nella sua libreria</Text>
+                  {scanned.top_posseduti.map((t) => <Text key={t} style={{ color: '#ccc', marginTop: 2 }}>🎮 {t}</Text>)}
+                </View>
+              )}
+              <Pressable onPress={() => setScanned(null)} style={{ marginTop: 24, alignSelf: 'flex-start', backgroundColor: '#7C5CFF', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10 }}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Scansiona un altro</Text>
+              </Pressable>
             </SafeAreaView>
           )}
           <Pressable onPress={() => setScanner(false)} style={{ position: 'absolute', top: 50, right: 20, backgroundColor: '#0008', borderRadius: 999, padding: 10 }}>

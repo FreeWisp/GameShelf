@@ -44,9 +44,11 @@ function applyExclusivity(cur, req) {
 }
 
 // Delete an entry that no longer represents any relationship (owned/wishlist/fav).
+// Steam-linked entries are KEPT even when un-owned, so their cached achievements
+// stay visible ("gli achievement sono presenti a prescindere").
 function cleanupIfEmpty(id) {
-  const r = db.prepare('SELECT owned, in_wishlist, flag_preferito FROM Libreria_Utente WHERE id_possesso = ?').get(id);
-  if (r && !r.owned && !r.in_wishlist && !r.flag_preferito) {
+  const r = db.prepare('SELECT owned, in_wishlist, flag_preferito, store_acquisto FROM Libreria_Utente WHERE id_possesso = ?').get(id);
+  if (r && !r.owned && !r.in_wishlist && !r.flag_preferito && r.store_acquisto !== 'steam') {
     db.prepare('DELETE FROM Libreria_Utente WHERE id_possesso = ?').run(id);
     return true;
   }
@@ -102,13 +104,16 @@ router.patch('/:id', (req, res) => {
     return res.status(400).json({ error: 'Stato non valido' });
   }
   const f = applyExclusivity(row, { owned, in_wishlist, flag_preferito });
+  // A manual status change becomes the user's choice -> stop auto-completing it.
+  const statusAuto = stato_avanzamento ? 0 : null;
   db.prepare(`UPDATE Libreria_Utente SET
     stato_avanzamento = COALESCE(?, stato_avanzamento),
+    status_auto = COALESCE(?, status_auto),
     owned = ?, flag_preferito = ?, in_wishlist = ?,
     note_testuali  = COALESCE(?, note_testuali),
     store_acquisto = COALESCE(?, store_acquisto)
     WHERE id_possesso = ?`).run(
-    stato_avanzamento ?? null, f.owned, f.flag_preferito, f.in_wishlist,
+    stato_avanzamento ?? null, statusAuto, f.owned, f.flag_preferito, f.in_wishlist,
     note_testuali ?? null, store_acquisto ?? null, req.params.id,
   );
 

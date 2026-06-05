@@ -143,17 +143,47 @@ async function enrich(rows) {
 export const igdbService = {
   enabled: igdbEnabled,
 
-  /** Fuzzy search; falls back to Levenshtein over the seed catalogue offline. */
+  /**
+   * Search that mirrors IGDB's own relevance. IGDB exposes two complementary
+   * mechanisms, each with blind spots:
+   *   · `search "q"`         → great relevance + alternative names (gta v → GTA V)
+   *                            but misses some titles entirely (e.g. "until then").
+   *   · `where name ~ *"q"*` → reliable substring match (catches "until then")
+   *                            but ignores alternative names.
+   * We run both and merge: search results first (relevance), then name matches
+   * not already present, finally promoting exact/prefix title matches to the top.
+   */
   async search(query, limit = 20) {
     if (!igdbEnabled) {
       return rankByCloseness(query, POPULAR_GAMES, (g) => g.titolo).slice(0, limit);
     }
-    const safe = query.replace(/["\\]/g, '');
-    // Note: IGDB deprecated the game `category` field, so we don't filter on it.
-    // Results are ranked client-side by Levenshtein distance, so the exact title
-    // surfaces on top even amongst editions/packs.
-    const rows = await igdbQuery('games', `${FIELDS} search "${safe}"; limit ${limit};`);
-    return enrich(rows);
+    const safe = query.replace(/["\\*]/g, '').trim();
+    if (!safe) return [];
+
+    const [bySearch, byName] = await Promise.all([
+      igdbQuery('games', `${FIELDS} search "${safe}"; limit ${limit};`).catch(() => []),
+      igdbQuery('games', `${FIELDS} where name ~ *"${safe}"*; limit ${limit};`).catch(() => []),
+    ]);
+
+    const seen = new Set();
+    const merged = [];
+    for (const g of [...bySearch, ...byName]) {
+      if (!g || seen.has(g.id)) continue;
+      seen.add(g.id);
+      merged.push(g);
+    }
+
+    // Promote exact (0) and prefix (1) title matches; keep IGDB order otherwise.
+    const q = safe.toLowerCase();
+    const rankOf = (name = '') => {
+      const n = name.toLowerCase();
+      if (n === q) return 0;
+      if (n.startsWith(q)) return 1;
+      return 2;
+    };
+    merged.sort((a, b) => rankOf(a.name) - rankOf(b.name)); // stable in V8
+
+    return enrich(merged.slice(0, limit));
   },
 
   /** Most popular games of the moment (recent + highly followed). */

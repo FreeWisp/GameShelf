@@ -61,7 +61,7 @@ export default function Home() {
   };
   const submitFolder = async () => {
     const name = folderName.trim();
-    if (!name) return;
+    if (!name) { Alert.alert('Nome mancante', 'Dai un nome alla mensola prima di salvare.'); return; }
     try {
       if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.target, name, folderEmoji);
       else await api.createFolder(name, folderEmoji);

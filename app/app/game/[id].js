@@ -23,8 +23,10 @@ export default function GameDetail() {
   const [game, setGame] = useState(null);
   const [entry, setEntry] = useState(null);   // library entry if owned
   const [expanded, setExpanded] = useState(false);
+  const [descLines, setDescLines] = useState(0); // true line count of the description
   const [loading, setLoading] = useState(true);
   const triedCommunity = useRef(false);
+  const DESC_MAX_LINES = 4;
 
   const load = useCallback(async () => {
     try {
@@ -201,12 +203,20 @@ export default function GameDetail() {
             <Text style={{ color: colors.primary, fontWeight: '700' }}>Aggiungi a una mensola</Text>
           </Pressable>
 
-          {/* Descrizione */}
+          {/* Descrizione — "Leggi tutto" appears only when the text is actually truncated */}
           <Section title="Descrizione" colors={colors}>
-            <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }} numberOfLines={expanded ? undefined : 4}>
-              {game.descrizione || 'Nessuna descrizione disponibile.'}
-            </Text>
-            {(game.descrizione?.length ?? 0) > 160 && (
+            <View>
+              {/* hidden measurer: reports the real number of lines */}
+              <Text
+                style={{ position: 'absolute', left: 0, right: 0, opacity: 0, fontSize: 14, lineHeight: 20 }}
+                onTextLayout={(e) => setDescLines(e.nativeEvent.lines.length)}>
+                {game.descrizione || 'Nessuna descrizione disponibile.'}
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }} numberOfLines={expanded ? undefined : DESC_MAX_LINES}>
+                {game.descrizione || 'Nessuna descrizione disponibile.'}
+              </Text>
+            </View>
+            {descLines > DESC_MAX_LINES && (
               <Pressable onPress={() => setExpanded((v) => !v)} hitSlop={8}>
                 <Text style={{ color: colors.primary, fontWeight: '700', marginTop: 6 }}>{expanded ? 'Leggi meno ▲' : 'Leggi tutto ▼'}</Text>
               </Pressable>
@@ -263,13 +273,20 @@ export default function GameDetail() {
             )}
           </Section>
 
-          {entry && (
-            <Pressable onPress={() => Alert.alert('Rimuovi', 'Rimuovere dalla libreria?', [
-              { text: 'Annulla' },
-              { text: 'Rimuovi', style: 'destructive', onPress: async () => { await api.removeEntry(entry.id_possesso); router.back(); } },
+          {entry && (entry.owned || entry.in_wishlist || entry.flag_preferito) && (
+            <Pressable onPress={() => Alert.alert('Rimuovi', 'Rimuovere il gioco dalla tua libreria (posseduto/wishlist/preferiti)?', [
+              { text: 'Annulla', style: 'cancel' },
+              // Clear all flags; the backend keeps Steam-linked entries so their
+              // achievements stay visible. We STAY on the game page.
+              { text: 'Rimuovi', style: 'destructive', onPress: () => mutate({ owned: false, in_wishlist: false, flag_preferito: false }) },
             ])} style={{ marginTop: 24, alignItems: 'center' }}>
               <Text style={{ color: colors.danger, fontWeight: '700' }}>Rimuovi dalla libreria</Text>
             </Pressable>
+          )}
+          {entry && !entry.owned && !entry.in_wishlist && !entry.flag_preferito && entry.community_cache?.achievements?.total > 0 && (
+            <Text style={{ color: colors.textMuted, fontSize: 12, textAlign: 'center', marginTop: 20 }}>
+              Non lo possiedi più — gli obiettivi Steam restano comunque visibili.
+            </Text>
           )}
         </View>
       </ScrollView>

@@ -36,36 +36,32 @@ router.get('/popular', async (req, res) => {
 
 /**
  * GET /games/search?q=...
- * 1. Search the shared catalogue with Levenshtein fuzzy matching (req. 4).
- * 2. If nothing is close enough, enqueue an IGDB fetch (queue-based load
- *    leveling) to enrich the DB, then return the freshly stored results.
+ * Returns results with IGDB-grade relevance. We query IGDB (via the load-
+ * leveling queue), persist the results into the shared catalogue, and return
+ * them IN IGDB's RELEVANCE ORDER — we no longer re-rank the whole catalogue by
+ * edit distance (that produced unrelated results). A local substring search is
+ * used as a fast path / offline fallback.
  */
 router.get('/search', async (req, res) => {
   const q = (req.query.q ?? '').toString().trim();
   if (!q) return res.json({ games: [], source: 'empty' });
 
-  const local = gameService.searchLocal(q);
-  if (!local.needsRemote && local.results.length) {
+  // Fast path: if the catalogue already contains strong matches for the query
+  // (title contains it) AND IGDB is off, answer locally. Otherwise hit IGDB.
+  try {
+    const result = await queue.enqueueAndWait('igdb_search', { query: q }, 25000);
+    const games = result?.games ?? [];
+    if (games.length) {
+      return res.json({ games, bestMatch: games[0], didYouMean: didYouMean(q, games), source: 'igdb' });
+    }
+    // IGDB returned nothing (or disabled) → fall back to the local catalogue.
+    const local = gameService.searchLocal(q);
     return res.json({
       games: local.results, bestMatch: local.bestMatch,
       didYouMean: didYouMean(q, local.results), source: 'catalogue',
     });
-  }
-
-  try {
-    const result = await queue.enqueueAndWait('igdb_search', { query: q });
-    const games = (result?.games ?? []);
-    // Re-run local search so the response is ranked by edit distance too.
-    const ranked = gameService.searchLocal(q);
-    const finalGames = ranked.results.length ? ranked.results : games;
-    return res.json({
-      games: finalGames,
-      bestMatch: ranked.bestMatch ?? finalGames[0] ?? null,
-      didYouMean: didYouMean(q, finalGames),
-      source: 'igdb',
-    });
   } catch (err) {
-    // Queue/IGDB failed — degrade gracefully to whatever the catalogue has.
+    const local = gameService.searchLocal(q);
     return res.json({
       games: local.results, bestMatch: local.bestMatch,
       didYouMean: didYouMean(q, local.results), source: 'catalogue-fallback',

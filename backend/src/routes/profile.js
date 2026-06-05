@@ -58,14 +58,23 @@ router.post('/push-token', (req, res) => {
 router.get('/qr', (req, res) => {
   const u = db.prepare('SELECT * FROM Utente WHERE id_utente = ?').get(req.user.id);
   const stats = db.prepare(`SELECT
-      COUNT(*) AS total,
-      SUM(CASE WHEN stato_avanzamento='completato' THEN 1 ELSE 0 END) AS completati
+      SUM(CASE WHEN owned = 1 THEN 1 ELSE 0 END) AS posseduti,
+      SUM(CASE WHEN owned = 1 AND stato_avanzamento='completato' THEN 1 ELSE 0 END) AS completati
     FROM Libreria_Utente WHERE id_utente = ?`).get(req.user.id);
+
+  // A few representative titles (kept short so the QR stays easy to scan).
+  const titles = (where) => db.prepare(
+    `SELECT g.titolo FROM Libreria_Utente lu JOIN Gioco g ON g.id_gioco = lu.id_gioco
+     WHERE lu.id_utente = ? AND ${where} ORDER BY lu.data_aggiunta DESC LIMIT 5`,
+  ).all(req.user.id).map((r) => r.titolo);
+
   const payload = {
     type: 'gameshelf-profile',
     username: u.username,
-    giochi_giocati: stats.total ?? 0,
+    posseduti: stats.posseduti ?? 0,
     completati: stats.completati ?? 0,
+    top_posseduti: titles('lu.owned = 1'),
+    top_completati: titles("lu.owned = 1 AND lu.stato_avanzamento='completato'"),
   };
   res.json({ payload, encoded: JSON.stringify(payload) });
 });

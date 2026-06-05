@@ -54,18 +54,14 @@ export function registerHandlers() {
         });
       }
       const id_gioco = game.id_gioco;
-      const existing = db.prepare('SELECT * FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, id_gioco);
+      const existing = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, id_gioco);
+      // NON-DESTRUCTIVE sync: only add genuinely new games. Existing entries are
+      // left untouched — the user's choices always win over the Steam default
+      // (status, "non lo possiedo più", favourite, wishlist, notes are kept).
       if (!existing) {
-        db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned)
-                    VALUES (?, ?, 'steam', ?, 1)`).run(userId, id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
+        db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned, status_auto)
+                    VALUES (?, ?, 'steam', ?, 1, 1)`).run(userId, id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
         linked++;
-      } else {
-        // Reconcile: Steam is the source of truth for OWNERSHIP. Re-assert
-        // owned=1 and drop any contradictory wishlist flag, but PRESERVE the
-        // user's own edits (status, favourite, notes, folders).
-        db.prepare(`UPDATE Libreria_Utente SET owned = 1, in_wishlist = 0,
-                    store_acquisto = COALESCE(store_acquisto, 'steam') WHERE id_possesso = ?`)
-          .run(existing.id_possesso);
       }
     }
     return { owned: owned.length, linked, enriched };
@@ -81,6 +77,14 @@ export function registerHandlers() {
     if (userId && id_gioco) {
       db.prepare('UPDATE Libreria_Utente SET community_cache = ? WHERE id_utente = ? AND id_gioco = ?')
         .run(JSON.stringify(cache), userId, id_gioco);
+
+      // 100% achievements -> mark as "Completato", but ONLY if the status is
+      // still the automatic one (never overwrite the user's manual choice).
+      if (ach.total > 0 && ach.unlocked === ach.total) {
+        db.prepare(`UPDATE Libreria_Utente SET stato_avanzamento = 'completato'
+                    WHERE id_utente = ? AND id_gioco = ? AND owned = 1 AND status_auto = 1`)
+          .run(userId, id_gioco);
+      }
     }
     return cache;
   });

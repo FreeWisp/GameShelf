@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS Libreria_Utente (
   data_aggiunta     TEXT DEFAULT (datetime('now')),
   note_testuali     TEXT,
   owned             INTEGER DEFAULT 0,   -- posseduto / nel backlog
+  status_auto       INTEGER DEFAULT 0,   -- 1 = stato impostato automaticamente (Steam), 0 = scelto dall'utente
   flag_preferito    INTEGER DEFAULT 0,   -- preferito (indipendente)
   in_wishlist       INTEGER DEFAULT 0,   -- in wishlist (indipendente)
   community_cache   TEXT DEFAULT '{}',   -- per-user Steam achievements/stats

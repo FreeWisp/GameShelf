@@ -114,35 +114,33 @@ export const gameService = {
   },
 
   /**
-   * Search the shared catalogue first. Uses Levenshtein edit-distance so that
-   * mistyped titles still resolve to the closest stored game (req. 4).
-   * Returns { results, bestMatch, needsRemote } — needsRemote tells the caller
-   * (route) whether to enqueue an IGDB fetch to enrich the catalogue.
+   * Local catalogue search — used only as the offline fallback (when IGDB is
+   * disabled or returns nothing). Returns ONLY real matches: titles that
+   * contain the query (ranked exact > prefix > contains > popularity). If there
+   * are none, falls back to the closest Levenshtein matches but ONLY when very
+   * similar (typo tolerance, req. 4) — never the whole catalogue.
    */
   searchLocal(query, limit = 20) {
     const q = query.toLowerCase().trim();
     const all = db.prepare(SELECT_WITH_SAGA).all().map(rowToGame);
-    if (all.length === 0) return { results: [], bestMatch: null, needsRemote: true };
+    if (all.length === 0 || !q) return { results: [], bestMatch: null, needsRemote: true };
 
-    const ranked = rankByCloseness(query, all, (g) => g.titolo).slice(0, limit);
-    const best = ranked[0];
-    const bestSim = best ? similarity(query, best.titolo) : 0;
-
-    // A "strong" catalogue hit means we can answer without touching IGDB:
-    //   - a title equals the query, or contains it (e.g. "elden" -> "Elden Ring"), or
-    //   - the query is essentially a whole title (a long title is a substring of
-    //     the query, guarding against short titles like "Fort" matching "fortnite"), or
-    //   - the closest title is almost identical (likely just a typo).
-    // Otherwise the wanted game probably isn't stored yet, so we enrich from IGDB.
-    const hasStrong = all.some((g) => {
-      const t = g.titolo.toLowerCase();
-      if (t === q) return true;
-      if (q.length >= 3 && t.includes(q)) return true;
-      if (t.length >= 4 && t.length >= q.length * 0.8 && q.includes(t)) return true;
-      return false;
-    });
-    const needsRemote = !(hasStrong || bestSim >= 0.82);
-
-    return { results: ranked, bestMatch: best ?? null, needsRemote };
+    const contains = all.filter((g) => g.titolo.toLowerCase().includes(q));
+    let results;
+    if (contains.length) {
+      const rank = (t) => (t === q ? 0 : t.startsWith(q) ? 1 : 2);
+      results = contains
+        .sort((a, b) => {
+          const ra = rank(a.titolo.toLowerCase()); const rb = rank(b.titolo.toLowerCase());
+          return ra !== rb ? ra - rb : (b.popularity ?? 0) - (a.popularity ?? 0);
+        })
+        .slice(0, limit);
+    } else {
+      // typo tolerance: only keep genuinely close titles
+      results = rankByCloseness(query, all, (g) => g.titolo)
+        .filter((g) => similarity(query, g.titolo) >= 0.6)
+        .slice(0, limit);
+    }
+    return { results, bestMatch: results[0] ?? null, needsRemote: results.length === 0 };
   },
 };
