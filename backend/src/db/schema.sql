@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS Gioco (
   publisher         TEXT,            -- sviluppatore / publisher
   data_pubblicazione TEXT,           -- data di rilascio
   genere            TEXT,
-  descrizione       TEXT,
+  descrizione       TEXT,            -- originale (IGDB, in inglese)
+  descrizione_it    TEXT,            -- traduzione italiana (cache, generata una volta)
   copertina_url     TEXT,            -- URL immagine
   id_saga           INTEGER REFERENCES Saga(id_saga),
   -- extra metadata required by the spec (stored as JSON text) --

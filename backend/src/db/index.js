@@ -25,6 +25,7 @@ const migrations = [
     // Pre-existing entries that aren't wishlist were "owned" in the old model.
     after: 'UPDATE Libreria_Utente SET owned = 1 WHERE in_wishlist = 0',
   },
+  { sql: 'ALTER TABLE Gioco ADD COLUMN descrizione_it TEXT' },
 ];
 for (const m of migrations) {
   try {

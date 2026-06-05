@@ -73,10 +73,14 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// GET /games/:id — full detail card
-router.get('/:id', (req, res) => {
+// GET /games/:id — full detail card (description served in Italian, cached)
+router.get('/:id', async (req, res) => {
   const game = gameService.getById(Number(req.params.id));
   if (!game) return res.status(404).json({ error: 'Gioco non trovato' });
+  try {
+    const it = await gameService.ensureItalianDescription(game.id_gioco);
+    if (it) game.descrizione = it;
+  } catch { /* keep original on translation failure */ }
   res.json({ game });
 });
 

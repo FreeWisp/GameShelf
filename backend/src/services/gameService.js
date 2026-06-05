@@ -1,5 +1,6 @@
 import db from '../db/index.js';
 import { rankByCloseness, similarity } from '../utils/levenshtein.js';
+import { translateService } from './translateService.js';
 
 const SELECT_WITH_SAGA =
   'SELECT g.*, s.nome_saga AS saga FROM Gioco g LEFT JOIN Saga s ON s.id_saga = g.id_saga';
@@ -73,6 +74,16 @@ export const gameService = {
 
   getById(id) {
     return rowToGame(db.prepare(`${SELECT_WITH_SAGA} WHERE g.id_gioco = ?`).get(id));
+  },
+
+  // Translate the (English) IGDB description to Italian once and cache it.
+  async ensureItalianDescription(id) {
+    const row = db.prepare('SELECT descrizione, descrizione_it FROM Gioco WHERE id_gioco = ?').get(id);
+    if (!row?.descrizione) return row?.descrizione_it ?? null;
+    if (row.descrizione_it) return row.descrizione_it;
+    const it = await translateService.toItalian(row.descrizione);
+    db.prepare('UPDATE Gioco SET descrizione_it = ? WHERE id_gioco = ?').run(it, id);
+    return it;
   },
 
   popularFromDb(limit = 16) {
