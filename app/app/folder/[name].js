@@ -18,6 +18,7 @@ export default function FolderDetail() {
   const { colors } = useTheme();
   const router = useRouter();
   const [games, setGames] = useState([]);
+  const [emoji, setEmoji] = useState('📚');
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState('recenti');
 
@@ -26,6 +27,7 @@ export default function FolderDetail() {
       const { folders } = await api.folders();
       const folder = folders.find((f) => f.nome_cartella === folderName);
       setGames(folder?.giochi ?? []);
+      setEmoji(folder?.emoji ?? '📚');
     } catch (e) { Alert.alert('Errore', e.message); }
     finally { setLoading(false); }
   }, [folderName]);
@@ -56,7 +58,7 @@ export default function FolderDetail() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 }}>
         <Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={colors.text} /></Pressable>
-        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, flex: 1 }} numberOfLines={1}>📚 {folderName}</Text>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, flex: 1 }} numberOfLines={1}>{emoji} {folderName}</Text>
         <Pressable onPress={deleteFolder} hitSlop={10}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>
       </View>
 

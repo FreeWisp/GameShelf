@@ -5,6 +5,24 @@ import { translateService } from './translateService.js';
 const SELECT_WITH_SAGA =
   'SELECT g.*, s.nome_saga AS saga FROM Gioco g LEFT JOIN Saga s ON s.id_saga = g.id_saga';
 
+// Guarantee a Steam store link when we know the appid (IGDB sometimes omits it),
+// and drop duplicate store entries (same store).
+function normalizeStoreLinks(links = [], steamAppid) {
+  const out = [];
+  const seen = new Set();
+  for (const l of links) {
+    if (!l?.url) continue;
+    const key = `${l.store}|${l.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(l);
+  }
+  if (steamAppid && !out.some((l) => l.store === 'steam')) {
+    out.unshift({ store: 'steam', name: 'Steam', url: `https://store.steampowered.com/app/${steamAppid}` });
+  }
+  return out;
+}
+
 function getOrCreateSaga(nome) {
   if (!nome) return null;
   const existing = db.prepare('SELECT id_saga FROM Saga WHERE nome_saga = ?').get(nome);
@@ -45,7 +63,7 @@ export const gameService = {
       descrizione: g.descrizione ?? null,
       copertina_url: g.copertina_url ?? null,
       id_saga,
-      store_links: JSON.stringify(g.store_links ?? []),
+      store_links: JSON.stringify(normalizeStoreLinks(g.store_links ?? [], g.steam_appid)),
       lingue: JSON.stringify(g.lingue ?? []),
       tags: JSON.stringify(g.tags ?? []),
       piattaforme: JSON.stringify(g.piattaforme ?? []),

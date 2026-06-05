@@ -86,8 +86,10 @@ export const api = {
 
   // folders (HashMap)
   folders: () => request('/folders'),
-  createFolder: (nome_cartella) => request('/folders', { method: 'POST', body: { nome_cartella } }),
-  renameFolder: (name, nuovo_nome) => request(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: { nuovo_nome } }),
+  createFolder: (nome_cartella, emoji) => request('/folders', { method: 'POST', body: { nome_cartella, emoji } }),
+  renameFolder: (name, nuovo_nome, emoji) => request(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: { nuovo_nome, emoji } }),
+  setFolderEmoji: (name, emoji) => request(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: { emoji } }),
+  reorderFolders: (order) => request('/folders/reorder', { method: 'PATCH', body: { order } }),
   deleteFolder: (name) => request(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' }),
   addToFolder: (name, game) => request(`/folders/${encodeURIComponent(name)}/games`, { method: 'POST', body: { game } }),
   removeFromFolder: (name, gameId) => request(`/folders/${encodeURIComponent(name)}/games/${gameId}`, { method: 'DELETE' }),

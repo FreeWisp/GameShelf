@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS folder_map (
   id_utente     INTEGER NOT NULL REFERENCES Utente(id_utente) ON DELETE CASCADE,
   nome_cartella TEXT NOT NULL,
   giochi_json   TEXT NOT NULL DEFAULT '[]',
+  emoji         TEXT DEFAULT '📚',
+  ordine        INTEGER DEFAULT 0,
   created_at    TEXT DEFAULT (datetime('now')),
   PRIMARY KEY (id_utente, nome_cartella)
 );

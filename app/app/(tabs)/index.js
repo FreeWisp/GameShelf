@@ -17,6 +17,8 @@ const FILTERS = [
   { key: 'completato', label: 'COMPLETATI' },
 ];
 
+const EMOJI_OPTIONS = ['📚', '🎮', '🕹️', '👾', '🏆', '⚔️', '🛡️', '🚀', '🐉', '🧩', '🎯', '🌟', '❤️', '🔥', '💎', '🎲', '🧟', '🏰'];
+
 export default function Home() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -28,6 +30,8 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [folderModal, setFolderModal] = useState(null); // { mode:'create'|'rename', target? } | null
   const [folderName, setFolderName] = useState('');
+  const [folderEmoji, setFolderEmoji] = useState('📚');
+  const [reorderMode, setReorderMode] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -49,23 +53,38 @@ export default function Home() {
     : owned; // 'tutti'
 
   // ----- folder create / rename modal -----
-  const openCreate = () => { setFolderName(''); setFolderModal({ mode: 'create' }); };
-  const openRename = (name) => { setFolderName(name); setFolderModal({ mode: 'rename', target: name }); };
+  const openCreate = () => { setFolderName(''); setFolderEmoji('📚'); setFolderModal({ mode: 'create' }); };
+  const openRename = (folder) => {
+    const name = typeof folder === 'string' ? folder : folder.nome_cartella;
+    const emoji = typeof folder === 'string' ? (folders.find((f) => f.nome_cartella === name)?.emoji ?? '📚') : (folder.emoji ?? '📚');
+    setFolderName(name); setFolderEmoji(emoji); setFolderModal({ mode: 'rename', target: name });
+  };
   const submitFolder = async () => {
     const name = folderName.trim();
     if (!name) return;
     try {
-      if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.target, name);
-      else await api.createFolder(name);
+      if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.target, name, folderEmoji);
+      else await api.createFolder(name, folderEmoji);
       setFolderModal(null);
       load();
     } catch (e) { Alert.alert('Errore', e.message); }
   };
-  const folderActions = (name) => Alert.alert(name, 'Cosa vuoi fare con questa mensola?', [
-    { text: 'Rinomina', onPress: () => openRename(name) },
-    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(name); load(); } },
+  const folderActions = (folder) => Alert.alert(folder.nome_cartella, 'Cosa vuoi fare con questa mensola?', [
+    { text: 'Rinomina / cambia emoji', onPress: () => openRename(folder) },
+    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(folder.nome_cartella); load(); } },
     { text: 'Annulla', style: 'cancel' },
   ]);
+
+  // ----- reorder (move up/down, persisted) -----
+  const moveFolder = async (index, dir) => {
+    const next = index + dir;
+    if (next < 0 || next >= folders.length) return;
+    const arr = [...folders];
+    [arr[index], arr[next]] = [arr[next], arr[index]];
+    setFolders(arr); // optimistic
+    try { await api.reorderFolders(arr.map((f) => f.nome_cartella)); }
+    catch (e) { Alert.alert('Errore', e.message); load(); }
+  };
 
   const FolderModal = (
     <Modal visible={!!folderModal} transparent animationType="fade" onRequestClose={() => setFolderModal(null)}>
@@ -74,6 +93,17 @@ export default function Home() {
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, marginBottom: 14 }}>
             {folderModal?.mode === 'rename' ? 'Rinomina mensola' : 'Nuova mensola'}
           </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 6 }}>Icona</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 14 }}>
+            {EMOJI_OPTIONS.map((e) => (
+              <Pressable key={e} onPress={() => setFolderEmoji(e)}
+                style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: folderEmoji === e ? colors.primary + '33' : colors.surfaceAlt,
+                  borderWidth: 1, borderColor: folderEmoji === e ? colors.primary : 'transparent' }}>
+                <Text style={{ fontSize: 20 }}>{e}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
           <TextInput
             style={{ backgroundColor: colors.surfaceAlt, color: colors.text, borderRadius: 10, padding: 12, marginBottom: 16 }}
             placeholder="Es. Saga di Final Fantasy" placeholderTextColor={colors.textMuted}
@@ -137,31 +167,56 @@ export default function Home() {
           keyExtractor={(f) => f.nome_cartella}
           contentContainerStyle={{ padding: 16, gap: 12 }}
           ListHeaderComponent={
-            <Pressable onPress={openCreate}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 4 }}>
-              <Ionicons name="add-circle" size={24} color={colors.primary} />
-              <Text style={{ color: colors.text, fontWeight: '700' }}>Crea nuova mensola</Text>
-            </Pressable>
+            <View style={{ marginBottom: 4, gap: 10 }}>
+              {!reorderMode && (
+                <Pressable onPress={openCreate}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+                  <Ionicons name="add-circle" size={24} color={colors.primary} />
+                  <Text style={{ color: colors.text, fontWeight: '700' }}>Crea nuova mensola</Text>
+                </Pressable>
+              )}
+              {folders.length > 1 && (
+                <Pressable onPress={() => setReorderMode((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end' }}>
+                  <Ionicons name={reorderMode ? 'checkmark-circle' : 'swap-vertical'} size={16} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>{reorderMode ? 'Fine' : 'Riordina'}</Text>
+                </Pressable>
+              )}
+            </View>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <Pressable
-              onPress={() => router.push(`/folder/${encodeURIComponent(item.nome_cartella)}`)}
-              onLongPress={() => folderActions(item.nome_cartella)}
-              style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: colors.border }}>
+              onPress={() => !reorderMode && router.push(`/folder/${encodeURIComponent(item.nome_cartella)}`)}
+              onLongPress={() => !reorderMode && folderActions(item)}
+              style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: reorderMode ? colors.primary : colors.border }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }}>📚 {item.nome_cartella}</Text>
-                <Text style={{ color: colors.textMuted, marginRight: 12 }}>{item.count} giochi</Text>
-                <Pressable onPress={() => openRename(item.nome_cartella)} hitSlop={10}><Ionicons name="create-outline" size={18} color={colors.textMuted} /></Pressable>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }}>{item.emoji ?? '📚'} {item.nome_cartella}</Text>
+                {reorderMode ? (
+                  <View style={{ flexDirection: 'row', gap: 14 }}>
+                    <Pressable onPress={() => moveFolder(index, -1)} hitSlop={10} disabled={index === 0}>
+                      <Ionicons name="arrow-up-circle" size={26} color={index === 0 ? colors.border : colors.primary} />
+                    </Pressable>
+                    <Pressable onPress={() => moveFolder(index, 1)} hitSlop={10} disabled={index === folders.length - 1}>
+                      <Ionicons name="arrow-down-circle" size={26} color={index === folders.length - 1 ? colors.border : colors.primary} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={{ color: colors.textMuted, marginRight: 12 }}>{item.count} giochi</Text>
+                    <Pressable onPress={() => openRename(item)} hitSlop={10}><Ionicons name="create-outline" size={18} color={colors.textMuted} /></Pressable>
+                  </>
+                )}
               </View>
-              {item.giochi?.length > 0 && (
+              {!reorderMode && item.giochi?.length > 0 && (
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
                   {item.giochi.slice(0, 5).map((g) => <GameCover key={g.id_gioco} url={g.copertina_url} size="sm" />)}
                 </View>
               )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 }}>
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Apri e gestisci</Text>
-                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
-              </View>
+              {!reorderMode && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10 }}>
+                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Apri e gestisci</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+                </View>
+              )}
             </Pressable>
           )}
           ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 40 }}>Nessuna mensola. Creane una per organizzare i tuoi giochi.</Text>}

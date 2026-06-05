@@ -26,6 +26,8 @@ const migrations = [
     after: 'UPDATE Libreria_Utente SET owned = 1 WHERE in_wishlist = 0',
   },
   { sql: 'ALTER TABLE Gioco ADD COLUMN descrizione_it TEXT' },
+  { sql: "ALTER TABLE folder_map ADD COLUMN emoji TEXT DEFAULT '📚'" },
+  { sql: 'ALTER TABLE folder_map ADD COLUMN ordine INTEGER DEFAULT 0' },
 ];
 for (const m of migrations) {
   try {

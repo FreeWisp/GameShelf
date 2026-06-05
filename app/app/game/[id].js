@@ -237,6 +237,16 @@ export default function GameDetail() {
               <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 4 }}>
                 <View style={{ height: 8, width: `${(community.unlocked / community.total) * 100}%`, backgroundColor: colors.primary, borderRadius: 4 }} />
               </View>
+              {community.achievements?.some((a) => a.icon) && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginTop: 12 }}>
+                  {[...community.achievements].sort((a, b) => (b.achieved ? 1 : 0) - (a.achieved ? 1 : 0)).map((a) => (
+                    <Pressable key={a.apiname} onPress={() => Alert.alert(a.name, a.achieved ? 'Sbloccato ✓' : 'Non ancora sbloccato')}>
+                      <Image source={{ uri: a.icon }} style={{ width: 44, height: 44, borderRadius: 8, opacity: a.achieved ? 1 : 0.45,
+                        borderWidth: a.achieved ? 1.5 : 0, borderColor: colors.accent }} />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
             </Section>
           )}
 

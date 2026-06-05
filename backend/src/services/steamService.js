@@ -49,13 +49,37 @@ export const steamService = {
     return data?.appnews?.newsitems ?? [];
   },
 
-  // Player achievements (used for the "Achievement (Steam API)" widget).
+  // Achievement schema (display names + icon URLs for locked/unlocked states).
+  async getGameSchema(appid) {
+    try {
+      const data = await steamGet('ISteamUserStats/GetSchemaForGame/v2/', { appid, l: 'italian' });
+      const list = data?.game?.availableGameStats?.achievements ?? [];
+      const map = {};
+      for (const a of list) {
+        map[a.name] = { displayName: a.displayName, description: a.description, icon: a.icon, icongray: a.icongray };
+      }
+      return map;
+    } catch {
+      return {};
+    }
+  },
+
+  // Player achievements merged with the schema, so each item carries its icon.
   async getPlayerAchievements(steamid, appid) {
     try {
-      const data = await steamGet('ISteamUserStats/GetPlayerAchievements/v0001/', { steamid, appid, l: 'italian' });
+      const [data, schema] = await Promise.all([
+        steamGet('ISteamUserStats/GetPlayerAchievements/v0001/', { steamid, appid, l: 'italian' }),
+        this.getGameSchema(appid),
+      ]);
       const list = data?.playerstats?.achievements ?? [];
-      const unlocked = list.filter((a) => a.achieved === 1).length;
-      return { total: list.length, unlocked, achievements: list };
+      const achievements = list.map((a) => ({
+        apiname: a.apiname,
+        achieved: a.achieved === 1,
+        name: a.name ?? schema[a.apiname]?.displayName ?? a.apiname,
+        icon: a.achieved === 1 ? schema[a.apiname]?.icon : schema[a.apiname]?.icongray,
+      }));
+      const unlocked = achievements.filter((a) => a.achieved).length;
+      return { total: achievements.length, unlocked, achievements };
     } catch {
       return { total: 0, unlocked: 0, achievements: [] };
     }
