@@ -8,8 +8,20 @@ Il sistema è composto da due parti:
 
 | Componente | Stack | Cartella |
 |------------|-------|----------|
-| **App mobile** | Expo SDK 56, expo-router, React Native 0.85 | [`/app`](./app) |
+| **App mobile** | Expo SDK 54, expo-router, React Native 0.81 | [`/app`](./app) |
 | **Backend centralizzato** | Node.js + Express + SQLite (better-sqlite3) | [`/backend`](./backend) |
+
+---
+
+## 0. Requisiti (importante per lavorare in team)
+
+- **Node.js 20 / 22 (LTS) / 24** — il file [`.nvmrc`](./.nvmrc) indica **22 (LTS)** come versione consigliata.
+  `better-sqlite3` (modulo nativo) ha i **binari già pronti** per queste versioni: nessun
+  compilatore C++ richiesto. Con `nvm`: `nvm install 22 && nvm use 22`.
+- **npm** (incluso con Node) e **Expo Go** sul telefono (o un emulatore).
+
+> 💡 Le **chiavi API sono già incluse** in `backend/.env` (progetto accademico), quindi
+> non serve configurare nulla: clona e avvia.
 
 ---
 
@@ -19,17 +31,15 @@ Il sistema è composto da due parti:
 
 ```bash
 cd backend
-npm install
-cp .env.example .env        # opzionale: inserisci credenziali IGDB/Twitch
-npm run seed                # popola il catalogo + crea l'utente demo
+npm install                 # scarica i binari pronti (niente compilatori)
+npm run seed                # crea l'utente demo (il catalogo si popola da IGDB)
 npm start                   # http://localhost:4000
 ```
 
 Utente demo: **demo@gameshelf.app / demo1234**
 
-> **IGDB**: senza credenziali Twitch (`IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET`) il backend
-> usa un **dataset offline** di giochi popolari, così l'app è pienamente funzionante anche
-> senza configurazione. La chiave **Steam** è già preconfigurata.
+> **IGDB/Steam**: le chiavi sono già in `backend/.env`. Senza chiavi IGDB il backend usa un
+> dataset offline, ma essendo incluse il catalogo si popola da **IGDB live**.
 
 ### App mobile
 
@@ -44,6 +54,24 @@ Apri con **Expo Go** (QR), un emulatore Android, o `w` per il web.
 - **Emulatore Android**: il backend è raggiunto automaticamente via `10.0.2.2:4000`.
 - **Dispositivo fisico**: l'app auto-rileva l'IP del PC dev. In alternativa imposta
   `EXPO_PUBLIC_API_URL=http://<IP-DEL-PC>:4000` prima di `expo start`.
+
+### Risoluzione problemi
+
+- **`gyp ERR! ... Could not find any Visual Studio installation` / errore di compilazione
+  C++ su `better-sqlite3`**: stai usando una versione di Node per cui non esiste un binario
+  pronto, quindi npm prova a compilarlo. **Soluzione**: usa una versione di Node supportata
+  (20, **22 LTS** o 24) — vedi [`.nvmrc`](./.nvmrc) — poi:
+  ```bash
+  cd backend
+  # con nvm:
+  nvm install 22 && nvm use 22
+  rm -rf node_modules package-lock.json   # (Windows PowerShell: Remove-Item -Recurse -Force node_modules, package-lock.json)
+  npm install
+  ```
+  Il progetto usa `better-sqlite3@^12`, che pubblica i binari pre-compilati per Node 20–26:
+  con una di queste versioni **non serve alcun compilatore**.
+- **Errore di peer-deps su `npm install` nell'app**: usa `npm install --legacy-peer-deps`.
+- **Expo Go dice "incompatible version"**: aggiorna Expo Go dallo store (il progetto è su SDK 54).
 
 ---
 
