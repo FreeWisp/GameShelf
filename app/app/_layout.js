@@ -40,6 +40,7 @@ function RootNavigator() {
         <Stack.Screen name="diary/[possesso]" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="steam-callback" />
       </Stack>
     </>
   );

@@ -118,7 +118,7 @@ export default function GameDetail() {
 
   // Relationship chips shown at the top (a game can be several of these at once).
   const chips = [];
-  if (entry?.owned) chips.push({ label: meta.label, color: meta.color });
+  if (entry?.owned) chips.push({ label: meta.label + (entry.store_acquisto ? ` · ${entry.store_acquisto.toUpperCase()}` : ''), color: meta.color });
   if (entry?.in_wishlist) chips.push({ label: 'IN WISHLIST', color: '#3B82F6' });
   if (entry?.flag_preferito) chips.push({ label: 'PREFERITO', color: colors.danger });
   if (!chips.length) chips.push({ label: 'DA CERCA', color: colors.textMuted });
@@ -177,16 +177,23 @@ export default function GameDetail() {
             )}
           </View>
 
-          {/* Wishlist + Preferito toggles — independent, always visible */}
+          {/* Wishlist / Preferito — mutually exclusive with each other and with
+              ownership, so we only show the toggles that make sense:
+              · owned game  -> no wishlist (you can't wish for what you own)
+              · wishlist game -> no preferito (a wish isn't a favourite yet) */}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-            <ToggleButton
-              active={!!entry?.in_wishlist} onPress={toggleWishlist} colors={colors}
-              icon={entry?.in_wishlist ? 'bookmark' : 'bookmark-outline'} activeColor="#3B82F6"
-              label={entry?.in_wishlist ? 'In Wishlist' : 'Wishlist'} />
-            <ToggleButton
-              active={!!entry?.flag_preferito} onPress={toggleFavourite} colors={colors}
-              icon={entry?.flag_preferito ? 'heart' : 'heart-outline'} activeColor={colors.danger}
-              label={entry?.flag_preferito ? 'Preferito' : 'Aggiungi ai preferiti'} />
+            {!entry?.owned && (
+              <ToggleButton
+                active={!!entry?.in_wishlist} onPress={toggleWishlist} colors={colors}
+                icon={entry?.in_wishlist ? 'bookmark' : 'bookmark-outline'} activeColor="#3B82F6"
+                label={entry?.in_wishlist ? 'In Wishlist' : 'Wishlist'} />
+            )}
+            {!entry?.in_wishlist && (
+              <ToggleButton
+                active={!!entry?.flag_preferito} onPress={toggleFavourite} colors={colors}
+                icon={entry?.flag_preferito ? 'heart' : 'heart-outline'} activeColor={colors.danger}
+                label={entry?.flag_preferito ? 'Preferito' : 'Aggiungi ai preferiti'} />
+            )}
           </View>
 
           <Pressable onPress={addToFolder} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
