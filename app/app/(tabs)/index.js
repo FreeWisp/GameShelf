@@ -11,16 +11,11 @@ import { useTheme } from '../../src/context/ThemeContext';
 import { GameCover, STATUS_META } from '../../src/components/common';
 
 const FILTERS = [
+  { key: 'cartelle', label: 'CARTELLE' },
   { key: 'tutti', label: 'TUTTI' },
   { key: 'in_corso', label: 'DA CONTINUARE' },
   { key: 'completato', label: 'COMPLETATI' },
-  { key: 'preferiti', label: 'PREFERITI' },
-  { key: 'wishlist', label: 'WISHLIST' },
-  { key: 'cartelle', label: 'CARTELLE' },
 ];
-
-const WISHLIST_BADGE = { label: 'WISHLIST', color: '#3B82F6', icon: '♡' };
-const FAV_BADGE = { label: 'PREFERITO', color: '#EF4444', icon: '★' };
 
 export default function Home() {
   const { colors } = useTheme();
@@ -28,7 +23,7 @@ export default function Home() {
   const router = useRouter();
   const [library, setLibrary] = useState([]);
   const [folders, setFolders] = useState([]);
-  const [filter, setFilter] = useState('tutti');
+  const [filter, setFilter] = useState('cartelle');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [folderModal, setFolderModal] = useState(null); // { mode:'create'|'rename', target? } | null
@@ -49,12 +44,9 @@ export default function Home() {
   const completed = owned.filter((e) => e.stato_avanzamento === 'completato').length;
 
   const filtered =
-    filter === 'tutti' ? owned
-    : filter === 'in_corso' ? owned.filter((e) => e.stato_avanzamento === 'in_corso')
+    filter === 'in_corso' ? owned.filter((e) => e.stato_avanzamento === 'in_corso')
     : filter === 'completato' ? owned.filter((e) => e.stato_avanzamento === 'completato')
-    : filter === 'preferiti' ? library.filter((e) => e.flag_preferito)
-    : filter === 'wishlist' ? library.filter((e) => e.in_wishlist)
-    : library;
+    : owned; // 'tutti'
 
   // ----- folder create / rename modal -----
   const openCreate = () => { setFolderName(''); setFolderModal({ mode: 'create' }); };
@@ -111,7 +103,8 @@ export default function Home() {
           </View>
         </Pressable>
         <View style={{ flexDirection: 'row', gap: 18 }}>
-          <Pressable onPress={() => router.push('/(tabs)/search')}><Ionicons name="search" size={22} color={colors.text} /></Pressable>
+          <Pressable onPress={() => router.push('/collection/wishlist')}><Ionicons name="bookmark-outline" size={22} color={colors.text} /></Pressable>
+          <Pressable onPress={() => router.push('/collection/preferiti')}><Ionicons name="heart-outline" size={22} color={colors.text} /></Pressable>
           <Pressable onPress={() => router.push('/settings')}><Ionicons name="settings-outline" size={22} color={colors.text} /></Pressable>
         </View>
       </View>
@@ -178,32 +171,35 @@ export default function Home() {
     );
   }
 
-  // ---- Empty state for a brand-new user ----
-  if (library.length === 0) {
+  // ---- Empty state for a brand-new user (no games AND no folders) ----
+  if (library.length === 0 && folders.length === 0) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
         {Header}
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
           <Ionicons name="library-outline" size={72} color={colors.textMuted} />
-          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 16, textAlign: 'center' }}>La tua mensola è vuota</Text>
+          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 16, textAlign: 'center' }}>Inizia la tua collezione</Text>
           <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 8 }}>
-            Aggiungi il tuo primo gioco cercandolo, oppure crea una mensola per organizzare la collezione.
+            Crea la tua prima mensola, oppure cerca un gioco da aggiungere.
           </Text>
-          <Pressable onPress={() => router.push('/(tabs)/search')}
-            style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, marginTop: 24 }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Cerca un gioco</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+            <Pressable onPress={openCreate} style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Crea mensola</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push('/(tabs)/search')} style={{ backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 12 }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Cerca un gioco</Text>
+            </Pressable>
+          </View>
         </View>
+        {FolderModal}
       </SafeAreaView>
     );
   }
 
   const emptyMsg = {
-    tutti: 'Nessun gioco posseduto. Aggiungine dalla ricerca.',
+    tutti: 'Nessun gioco posseduto. Aggiungine dalla ricerca o segna un gioco come posseduto.',
     in_corso: 'Nessun gioco in corso.',
     completato: 'Nessun gioco completato.',
-    preferiti: 'Nessun preferito. Tocca il cuore su una scheda gioco.',
-    wishlist: 'Wishlist vuota. Aggiungi i giochi che desideri.',
   }[filter];
 
   // ---- Game grid ----
@@ -219,8 +215,7 @@ export default function Home() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
         ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 30 }}>{emptyMsg}</Text>}
         renderItem={({ item }) => {
-          const badge = item.owned ? STATUS_META[item.stato_avanzamento]
-            : item.in_wishlist ? WISHLIST_BADGE : FAV_BADGE;
+          const badge = STATUS_META[item.stato_avanzamento];
           return (
             <Pressable style={{ flex: 1 / 3, maxWidth: '32%' }} onPress={() => router.push(`/game/${item.game.id_gioco}`)}>
               <View>

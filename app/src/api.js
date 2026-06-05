@@ -81,6 +81,7 @@ export const api = {
   // diary
   diary: (possessoId) => request(`/library/${possessoId}/diary`),
   addNote: (possessoId, b) => request(`/library/${possessoId}/diary`, { method: 'POST', body: b }),
+  updateNote: (possessoId, noteId, b) => request(`/library/${possessoId}/diary/${noteId}`, { method: 'PATCH', body: b }),
   deleteNote: (possessoId, noteId) => request(`/library/${possessoId}/diary/${noteId}`, { method: 'DELETE' }),
 
   // folders (HashMap)

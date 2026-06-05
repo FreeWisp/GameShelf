@@ -1,17 +1,19 @@
 import { useCallback, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Linking, Pressable, ScrollView, Text, View,
+  ActivityIndicator, Alert, Image, Pressable, ScrollView, Share, Text, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
+import { openLink } from '../../src/lib/links';
 import { useTheme } from '../../src/context/ThemeContext';
 import { GameCover, Pill, Stars, STATUS_META, STATUS_ORDER } from '../../src/components/common';
 
 const STORE_ICON = {
   steam: 'logo-steam', epic: 'game-controller', gog: 'game-controller',
   microsoft: 'logo-windows', playstation: 'logo-playstation', nintendo: 'game-controller',
+  official: 'globe-outline',
 };
 
 export default function GameDetail() {
@@ -67,16 +69,32 @@ export default function GameDetail() {
   const addToBacklog = () => mutate({ owned: true, stato_avanzamento: entry?.stato_avanzamento ?? 'da_iniziare' });
   const removeFromBacklog = () => mutate({ owned: false });
 
-  const cycleStatus = () => {
-    const cur = entry?.stato_avanzamento ?? 'da_iniziare';
-    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cur) + 1) % STATUS_ORDER.length];
-    mutate({ owned: true, stato_avanzamento: next });
-  };
+  // Status picker (also lets you remove the game from "posseduti").
+  const chooseStatus = () => Alert.alert('Stato del gioco', game?.titolo, [
+    ...STATUS_ORDER.map((s) => ({
+      text: `${STATUS_META[s].icon} ${STATUS_META[s].label}`,
+      onPress: () => mutate({ owned: true, stato_avanzamento: s }),
+    })),
+    { text: '✕ Non lo possiedo più', style: 'destructive', onPress: removeFromBacklog },
+    { text: 'Annulla', style: 'cancel' },
+  ]);
+
+  const shareGame = () => Share.share({
+    message: `${game.titolo}${game.publisher ? ` (${game.publisher})` : ''} — scoperto con GameShelf`,
+    url: game.store_links?.[0]?.url ?? undefined,
+  }).catch(() => {});
+
+  const openMetacritic = () => openLink(`https://www.metacritic.com/search/${encodeURIComponent(game.titolo)}/`);
 
   const addToFolder = async () => {
     try {
       const { folders } = await api.folders();
-      if (!folders.length) return Alert.alert('Nessuna mensola', 'Crea prima una mensola dalla Home (tab Cartelle).');
+      if (!folders.length) {
+        return Alert.alert('Nessuna mensola', 'Non hai ancora mensole. Vuoi crearne una?', [
+          { text: 'Annulla', style: 'cancel' },
+          { text: 'Crea mensola', onPress: () => router.push('/(tabs)') },
+        ]);
+      }
       Alert.alert('Aggiungi a mensola', 'Scegli una mensola', [
         ...folders.map((f) => ({
           text: `${f.nome_cartella} (${f.count})`,
@@ -113,10 +131,7 @@ export default function GameDetail() {
           <Image source={{ uri: game.copertina_url }} style={{ width: '100%', height: 240, opacity: 0.5 }} blurRadius={2} />
           <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 16 }}>
             <Pressable onPress={() => router.back()} style={iconBtn(colors)}><Ionicons name="arrow-back" size={20} color={colors.text} /></Pressable>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Pressable onPress={() => Linking.openURL(game.store_links?.[0]?.url ?? 'https://gameshelf.app')} style={iconBtn(colors)}><Ionicons name="share-outline" size={20} color={colors.text} /></Pressable>
-              <Pressable onPress={toggleFavourite} style={iconBtn(colors)}><Ionicons name={entry?.flag_preferito ? 'heart' : 'heart-outline'} size={20} color={entry?.flag_preferito ? colors.danger : colors.text} /></Pressable>
-            </View>
+            <Pressable onPress={shareGame} style={iconBtn(colors)}><Ionicons name="share-outline" size={20} color={colors.text} /></Pressable>
           </SafeAreaView>
           <View style={{ position: 'absolute', top: 52, alignSelf: 'center', flexDirection: 'row', gap: 6 }}>
             {chips.map((c) => (
@@ -133,17 +148,18 @@ export default function GameDetail() {
             <View style={{ flex: 1, justifyContent: 'flex-end', paddingBottom: 6 }}>
               <Text style={{ color: colors.text, fontSize: 24, fontWeight: '900' }}>{game.titolo}</Text>
               <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
+              <Pressable onPress={openMetacritic} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
                 <Stars rating={game.rating} />
-                {game.rating ? <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{game.rating} Meta</Text> : null}
-              </View>
+                {game.rating ? <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{game.rating} Meta ›</Text>
+                  : <Text style={{ color: colors.textMuted, fontSize: 12 }}>Vota su Metacritic ›</Text>}
+              </Pressable>
             </View>
           </View>
 
           {/* Ownership / status: dropdown if owned, otherwise an "add to backlog" button */}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 16, alignItems: 'center' }}>
             {entry?.owned ? (
-              <Pressable onPress={cycleStatus} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: meta.color + '22', borderColor: meta.color, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
+              <Pressable onPress={chooseStatus} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: meta.color + '22', borderColor: meta.color, borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
                 <Text style={{ color: meta.color, fontWeight: '800', fontSize: 13 }}>{meta.icon} {meta.label}</Text>
                 <Ionicons name="chevron-down" size={14} color={meta.color} />
               </Pressable>
@@ -177,28 +193,25 @@ export default function GameDetail() {
             <Ionicons name="folder-outline" size={16} color={colors.primary} />
             <Text style={{ color: colors.primary, fontWeight: '700' }}>Aggiungi a una mensola</Text>
           </Pressable>
-          {entry?.owned && (
-            <Pressable onPress={removeFromBacklog} style={{ marginTop: 8 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>Non lo possiedo più</Text>
-            </Pressable>
-          )}
 
-          {/* Description */}
-          <Section title="Description" colors={colors}>
-            <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }} numberOfLines={expanded ? undefined : 3}>
+          {/* Descrizione */}
+          <Section title="Descrizione" colors={colors}>
+            <Text style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }} numberOfLines={expanded ? undefined : 4}>
               {game.descrizione || 'Nessuna descrizione disponibile.'}
             </Text>
-            {game.descrizione?.length > 120 && (
-              <Pressable onPress={() => setExpanded((v) => !v)}><Text style={{ color: colors.primary, fontWeight: '700', marginTop: 4 }}>{expanded ? 'Leggi -' : 'Leggi +'}</Text></Pressable>
+            {(game.descrizione?.length ?? 0) > 160 && (
+              <Pressable onPress={() => setExpanded((v) => !v)} hitSlop={8}>
+                <Text style={{ color: colors.primary, fontWeight: '700', marginTop: 6 }}>{expanded ? 'Leggi meno ▲' : 'Leggi tutto ▼'}</Text>
+              </Pressable>
             )}
           </Section>
 
-          {/* Store info */}
+          {/* Store */}
           {game.store_links?.length > 0 && (
-            <Section title="Store info" colors={colors}>
+            <Section title="Dove trovarlo" colors={colors}>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {game.store_links.map((s, i) => (
-                  <Pressable key={i} onPress={() => Linking.openURL(s.url)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: colors.border }}>
+                  <Pressable key={i} onPress={() => openLink(s.url)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: colors.border }}>
                     <Ionicons name={STORE_ICON[s.store] ?? 'cart-outline'} size={16} color={colors.text} />
                     <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>{s.name}</Text>
                   </Pressable>
@@ -207,9 +220,9 @@ export default function GameDetail() {
             </Section>
           )}
 
-          {/* Achievements (Steam API) */}
+          {/* Obiettivi (Steam) */}
           {community && community.total > 0 && (
-            <Section title="Achievement (Steam API)" colors={colors}>
+            <Section title="Obiettivi (Steam)" colors={colors}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{community.unlocked}/{community.total} Sbloccati</Text>
                 <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{Math.round((community.unlocked / community.total) * 100)}%</Text>
@@ -223,7 +236,7 @@ export default function GameDetail() {
           {/* Metadata grid */}
           <Section title="Dettagli" colors={colors}>
             <MetaRow label="Saga" value={game.id_saga ? (game.saga ?? '—') : '—'} colors={colors} />
-            <MetaRow label="Time to beat" value={game.time_to_beat ? `${game.time_to_beat}h` : '—'} colors={colors} />
+            <MetaRow label="Tempo per finirlo" value={game.time_to_beat ? `${game.time_to_beat}h` : '—'} colors={colors} />
             <MetaRow label="Piattaforme" value={game.piattaforme?.join(', ') || '—'} colors={colors} />
             <MetaRow label="Lingue" value={game.lingue?.join(', ') || '—'} colors={colors} />
             {game.tags?.length > 0 && (

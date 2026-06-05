@@ -50,9 +50,10 @@ export default function Profile() {
   };
 
   const saveProfile = async () => {
+    if (!username.trim()) { Alert.alert('Username obbligatorio', 'Il nome utente non può essere vuoto.'); return; }
     setBusy(true);
     try {
-      const body = { username, bio };
+      const body = { username: username.trim(), bio };
       if (password) body.password = password;
       await api.updateProfile(body);
       await refresh();

@@ -1,4 +1,4 @@
 node_modules/
 data/*.db
 data/*.db-*
-.env
+# .env is intentionally committed for this academic project (see root .gitignore)

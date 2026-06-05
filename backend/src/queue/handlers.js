@@ -26,19 +26,29 @@ export function registerHandlers() {
     return { games: saved };
   });
 
-  // Pair / sync a user's Steam library (owned + recently played) into their shelf.
+  // Pair / sync a user's Steam library (owned games) into their shelf.
   queue.register('steam_sync', async ({ userId, steamId }) => {
     const owned = await steamService.getOwnedGames(steamId);
-    let linked = 0;
-    for (const o of owned.slice(0, 60)) {
-      // Match by steam_appid; if unknown, create a lightweight catalogue entry.
+    // Most-played first, so the richest titles get the (capped) IGDB enrichment.
+    const sorted = [...owned].sort((a, b) => (b.playtime_forever ?? 0) - (a.playtime_forever ?? 0));
+    let linked = 0, enriched = 0;
+
+    for (const o of sorted.slice(0, 60)) {
       let game = db.prepare('SELECT * FROM Gioco WHERE steam_appid = ?').get(o.appid);
       if (!game) {
-        game = gameService.upsert({
+        // Try to pull full IGDB metadata by title (best-effort, capped).
+        let igdbData = null;
+        if (igdbService.enabled && enriched < 40) {
+          try {
+            const results = await igdbService.search(o.name, 1);
+            const top = results?.[0];
+            if (top && top.titolo?.toLowerCase() === o.name.toLowerCase()) { igdbData = top; enriched++; }
+          } catch { /* ignore IGDB hiccups */ }
+        }
+        game = gameService.upsert(igdbData ? { ...igdbData, steam_appid: o.appid } : {
           titolo: o.name, steam_appid: o.appid,
-          copertina_url: o.img_icon_url
-            ? `https://media.steampowered.com/steamcommunity/public/images/apps/${o.appid}/${o.img_icon_url}.jpg`
-            : null,
+          // proper portrait capsule instead of the tiny pixelated icon
+          copertina_url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${o.appid}/library_600x900.jpg`,
           store_links: [{ store: 'steam', name: 'Steam', url: `https://store.steampowered.com/app/${o.appid}` }],
           popularity: Math.round((o.playtime_forever ?? 0) / 60),
         });
@@ -46,12 +56,12 @@ export function registerHandlers() {
       const id_gioco = game.id_gioco;
       const exists = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, id_gioco);
       if (!exists) {
-        db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento)
-                    VALUES (?, ?, 'steam', ?)`).run(userId, id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
+        db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned)
+                    VALUES (?, ?, 'steam', ?, 1)`).run(userId, id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
         linked++;
       }
     }
-    return { owned: owned.length, linked };
+    return { owned: owned.length, linked, enriched };
   });
 
   // Fetch & cache per-user Steam community data (stats + achievements) for a game.
@@ -68,8 +78,9 @@ export function registerHandlers() {
     return cache;
   });
 
-  // Aggregate Steam news for a set of app ids (News tab).
-  queue.register('steam_news', async ({ appids = [], count = 3 }) => {
+  // Aggregate Steam news for a set of app ids (News tab). Keep only Latin-script
+  // (Italian/English-ish) items — Steam returns posts in many languages.
+  queue.register('steam_news', async ({ appids = [], count = 5 }) => {
     const all = [];
     for (const appid of appids) {
       try {
@@ -77,8 +88,14 @@ export function registerHandlers() {
         all.push(...items.map((n) => ({ ...n, appid })));
       } catch { /* skip failing app */ }
     }
-    all.sort((a, b) => b.date - a.date);
-    return { news: all };
+    const isLatin = (s = '') => {
+      const text = s.replace(/<[^>]+>/g, '');
+      // drop posts containing Cyrillic / CJK / Greek / Arabic etc.
+      return !/[Ѐ-ӿ一-鿿぀-ヿͰ-Ͽ؀-ۿ가-힯]/.test(text);
+    };
+    const filtered = all.filter((n) => isLatin(`${n.title} ${n.contents}`));
+    filtered.sort((a, b) => b.date - a.date);
+    return { news: filtered };
   });
 
   // Check Epic free games; push-notify about titles we haven't announced yet.

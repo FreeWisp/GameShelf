@@ -61,10 +61,19 @@ const WEBSITE_TYPE = {
   24: { store: 'nintendo', name: 'Nintendo eShop' },
 };
 
+// Normalise IGDB URLs: some come protocol-relative ("//site") or without scheme.
+function normalizeUrl(url) {
+  if (!url) return null;
+  let u = url.trim();
+  if (u.startsWith('//')) u = `https:${u}`;
+  else if (!/^https?:\/\//i.test(u)) u = `https://${u.replace(/^\/+/, '')}`;
+  return u;
+}
+
 function mapStores(websites = []) {
   return websites
-    .map((w) => ({ meta: WEBSITE_TYPE[w.type ?? w.category], url: w.url }))
-    .filter((w) => w.meta)
+    .map((w) => ({ meta: WEBSITE_TYPE[w.type ?? w.category], url: normalizeUrl(w.url) }))
+    .filter((w) => w.meta && w.url)
     .map((w) => ({ ...w.meta, url: w.url }));
 }
 

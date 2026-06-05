@@ -28,6 +28,21 @@ function libraryEntry(row) {
 
 const toBool = (v) => (v === undefined ? null : (v ? 1 : 0));
 
+// Business rule:
+//  - a POSSEDUTO game CAN be PREFERITO;
+//  - a WISHLIST game is neither posseduto nor preferito.
+// So: putting a game in wishlist clears owned+preferito; owning or favouriting
+// a game removes it from the wishlist.
+function applyExclusivity(cur, req) {
+  let owned = (req.owned ?? cur.owned) ? true : false;
+  let wish = (req.in_wishlist ?? cur.in_wishlist) ? true : false;
+  let fav = (req.flag_preferito ?? cur.flag_preferito) ? true : false;
+  if (req.in_wishlist === true) { owned = false; fav = false; }
+  if (req.owned === true || req.flag_preferito === true) wish = false;
+  if (wish && (owned || fav)) wish = false; // safety net when several change at once
+  return { owned: owned ? 1 : 0, in_wishlist: wish ? 1 : 0, flag_preferito: fav ? 1 : 0 };
+}
+
 // Delete an entry that no longer represents any relationship (owned/wishlist/fav).
 function cleanupIfEmpty(id) {
   const r = db.prepare('SELECT owned, in_wishlist, flag_preferito FROM Libreria_Utente WHERE id_possesso = ?').get(id);
@@ -55,24 +70,25 @@ router.post('/', (req, res) => {
     .get(req.user.id, id_gioco);
 
   const noFlags = owned === undefined && in_wishlist === undefined && flag_preferito === undefined;
+  const cur = existing ?? { owned: 0, in_wishlist: 0, flag_preferito: 0 };
+  const want = { owned, in_wishlist, flag_preferito };
+  if (!existing && noFlags) want.owned = true; // default: add to backlog
+  const f = applyExclusivity(cur, want);
 
   if (!existing) {
     db.prepare(`INSERT INTO Libreria_Utente
       (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned, in_wishlist, flag_preferito)
       VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
       req.user.id, id_gioco, store_acquisto ?? null, stato_avanzamento,
-      noFlags ? 1 : (owned ? 1 : 0), in_wishlist ? 1 : 0, flag_preferito ? 1 : 0,
+      f.owned, f.in_wishlist, f.flag_preferito,
     );
   } else {
-    db.prepare(`UPDATE Libreria_Utente SET
-      owned = COALESCE(?, owned), in_wishlist = COALESCE(?, in_wishlist),
-      flag_preferito = COALESCE(?, flag_preferito), store_acquisto = COALESCE(?, store_acquisto)
-      WHERE id_possesso = ?`).run(
-      toBool(owned), toBool(in_wishlist), toBool(flag_preferito), store_acquisto ?? null, existing.id_possesso,
-    );
+    db.prepare(`UPDATE Libreria_Utente SET owned=?, in_wishlist=?, flag_preferito=?, store_acquisto=COALESCE(?, store_acquisto)
+      WHERE id_possesso = ?`).run(f.owned, f.in_wishlist, f.flag_preferito, store_acquisto ?? null, existing.id_possesso);
   }
   const row = db.prepare('SELECT * FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(req.user.id, id_gioco);
-  res.status(existing ? 200 : 201).json({ entry: libraryEntry(row) });
+  if (cleanupIfEmpty(row.id_possesso)) return res.json({ entry: null, deleted: true });
+  res.status(existing ? 200 : 201).json({ entry: libraryEntry(db.prepare('SELECT * FROM Libreria_Utente WHERE id_possesso=?').get(row.id_possesso)) });
 });
 
 // PATCH /library/:id  — update owned / status / favourite / wishlist / notes / store
@@ -85,15 +101,14 @@ router.patch('/:id', (req, res) => {
   if (stato_avanzamento && !VALID_STATES.includes(stato_avanzamento)) {
     return res.status(400).json({ error: 'Stato non valido' });
   }
+  const f = applyExclusivity(row, { owned, in_wishlist, flag_preferito });
   db.prepare(`UPDATE Libreria_Utente SET
     stato_avanzamento = COALESCE(?, stato_avanzamento),
-    owned             = COALESCE(?, owned),
-    flag_preferito    = COALESCE(?, flag_preferito),
-    in_wishlist       = COALESCE(?, in_wishlist),
-    note_testuali     = COALESCE(?, note_testuali),
-    store_acquisto    = COALESCE(?, store_acquisto)
+    owned = ?, flag_preferito = ?, in_wishlist = ?,
+    note_testuali  = COALESCE(?, note_testuali),
+    store_acquisto = COALESCE(?, store_acquisto)
     WHERE id_possesso = ?`).run(
-    stato_avanzamento ?? null, toBool(owned), toBool(flag_preferito), toBool(in_wishlist),
+    stato_avanzamento ?? null, f.owned, f.flag_preferito, f.in_wishlist,
     note_testuali ?? null, store_acquisto ?? null, req.params.id,
   );
 
@@ -129,6 +144,23 @@ router.post('/:id/diary', (req, res) => {
   const info = db.prepare(`INSERT INTO Diario (id_possesso, testo, ore_giocate, tag, is_spoiler, media_url, media_tipo)
     VALUES (?, ?, ?, ?, ?, ?, ?)`).run(req.params.id, testo, ore_giocate ?? null, tag ?? null, is_spoiler ? 1 : 0, media_url ?? null, media_tipo ?? null);
   res.status(201).json({ note: db.prepare('SELECT * FROM Diario WHERE id_nota = ?').get(info.lastInsertRowid) });
+});
+
+// PATCH /library/:id/diary/:noteId — edit an existing note
+router.patch('/:id/diary/:noteId', (req, res) => {
+  const own = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_possesso=? AND id_utente=?')
+    .get(req.params.id, req.user.id);
+  if (!own) return res.status(404).json({ error: 'Voce non trovata' });
+  const { testo, ore_giocate, tag, is_spoiler } = req.body ?? {};
+  if (testo !== undefined && !testo.trim()) return res.status(400).json({ error: 'Il testo non può essere vuoto' });
+  db.prepare(`UPDATE Diario SET
+    testo = COALESCE(?, testo), ore_giocate = ?, tag = ?, is_spoiler = COALESCE(?, is_spoiler),
+    updated_at = datetime('now')
+    WHERE id_nota = ? AND id_possesso = ?`).run(
+    testo ?? null, ore_giocate ?? null, tag ?? null,
+    is_spoiler === undefined ? null : (is_spoiler ? 1 : 0), req.params.noteId, req.params.id,
+  );
+  res.json({ note: db.prepare('SELECT * FROM Diario WHERE id_nota = ?').get(req.params.noteId) });
 });
 
 // DELETE /library/:id/diary/:noteId

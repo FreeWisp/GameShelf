@@ -94,7 +94,15 @@ export default function FolderDetail() {
               <Text numberOfLines={1} style={{ color: colors.text, fontSize: 11, fontWeight: '600', marginTop: 4 }}>{item.titolo}</Text>
             </Pressable>
           )}
-          ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 40 }}>Mensola vuota. Aggiungi giochi dalla loro scheda.</Text>}
+          ListEmptyComponent={
+            <View style={{ alignItems: 'center', marginTop: 44, paddingHorizontal: 32 }}>
+              <Ionicons name="albums-outline" size={52} color={colors.textMuted} />
+              <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: 12 }}>Mensola vuota. Cerca i giochi da aggiungere qui.</Text>
+              <Pressable onPress={() => router.push('/(tabs)/search')} style={{ marginTop: 16, backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10 }}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Cerca giochi</Text>
+              </Pressable>
+            </View>
+          }
         />
       )}
     </SafeAreaView>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
+import { openLink } from '../../src/lib/links';
 import { useTheme } from '../../src/context/ThemeContext';
 
 function stripHtml(s = '') {
@@ -35,7 +36,7 @@ export default function News() {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
         {epic.map((g) => (
-          <Pressable key={g.id} onPress={() => Linking.openURL(g.url)}
+          <Pressable key={g.id} onPress={() => openLink(g.url)}
             style={{ width: 200, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.accent, overflow: 'hidden' }}>
             {g.image ? <Image source={{ uri: g.image }} style={{ width: '100%', height: 100 }} /> : null}
             <View style={{ padding: 10 }}>
@@ -61,7 +62,7 @@ export default function News() {
           ListHeaderComponent={EpicSection}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}
           renderItem={({ item }) => (
-            <Pressable onPress={() => item.url && Linking.openURL(item.url)}
+            <Pressable onPress={() => item.url && openLink(item.url)}
               style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                 <Ionicons name="newspaper-outline" size={14} color={colors.primary} />
