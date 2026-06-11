@@ -32,6 +32,8 @@ export default function Home() {
   const [folderName, setFolderName] = useState('');
   const [folderEmoji, setFolderEmoji] = useState('📚');
   const [reorderMode, setReorderMode] = useState(false);
+  const [libQuery, setLibQuery] = useState('');
+  const [libSort, setLibSort] = useState('recenti'); // 'recenti' | 'az'
 
   const load = useCallback(async () => {
     try {
@@ -47,10 +49,18 @@ export default function Home() {
   const owned = library.filter((e) => e.owned);
   const completed = owned.filter((e) => e.stato_avanzamento === 'completato').length;
 
-  const filtered =
+  const byStatus =
     filter === 'in_corso' ? owned.filter((e) => e.stato_avanzamento === 'in_corso')
     : filter === 'completato' ? owned.filter((e) => e.stato_avanzamento === 'completato')
     : owned; // 'tutti'
+
+  // Live search (autocomplete-style) + sorting inside the personal library.
+  const q = libQuery.trim().toLowerCase();
+  const filtered = (q ? byStatus.filter((e) => e.game.titolo.toLowerCase().includes(q)) : byStatus)
+    .slice()
+    .sort((a, b) => libSort === 'az'
+      ? a.game.titolo.localeCompare(b.game.titolo)
+      : (b.data_aggiunta ?? '').localeCompare(a.data_aggiunta ?? ''));
 
   // ----- folder create / rename modal -----
   const openCreate = () => { setFolderName(''); setFolderEmoji('📚'); setFolderModal({ mode: 'create' }); };
@@ -251,20 +261,40 @@ export default function Home() {
     );
   }
 
-  const emptyMsg = {
-    tutti: 'Nessun gioco posseduto. Aggiungine dalla ricerca o segna un gioco come posseduto.',
-    in_corso: 'Nessun gioco in corso.',
-    completato: 'Nessun gioco completato.',
-  }[filter];
+  const emptyMsg = q
+    ? `Nessun gioco trovato per “${libQuery.trim()}”.`
+    : {
+        tutti: 'Nessun gioco posseduto. Aggiungine dalla ricerca o segna un gioco come posseduto.',
+        in_corso: 'Nessun gioco in corso.',
+        completato: 'Nessun gioco completato.',
+      }[filter];
 
   // ---- Game grid ----
+  // Header + search live OUTSIDE the FlatList so the TextInput keeps focus
+  // while the list re-renders on each keystroke.
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+      {Header}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, marginBottom: 10 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 10, borderWidth: 1, borderColor: colors.border }}>
+          <Ionicons name="search" size={15} color={colors.textMuted} />
+          <TextInput
+            style={{ flex: 1, color: colors.text, paddingVertical: 8, paddingHorizontal: 8, fontSize: 13 }}
+            placeholder="Cerca nella tua libreria..." placeholderTextColor={colors.textMuted}
+            value={libQuery} onChangeText={setLibQuery} autoCapitalize="none"
+          />
+          {libQuery ? <Pressable onPress={() => setLibQuery('')} hitSlop={8}><Ionicons name="close-circle" size={15} color={colors.textMuted} /></Pressable> : null}
+        </View>
+        <Pressable onPress={() => setLibSort((s) => (s === 'az' ? 'recenti' : 'az'))}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: colors.border }}>
+          <Ionicons name={libSort === 'az' ? 'text-outline' : 'time-outline'} size={14} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>{libSort === 'az' ? 'A-Z' : 'Recenti'}</Text>
+        </Pressable>
+      </View>
       <FlatList
         data={filtered}
         numColumns={3}
         keyExtractor={(e) => String(e.id_possesso)}
-        ListHeaderComponent={Header}
         columnWrapperStyle={{ paddingHorizontal: 12, gap: 8 }}
         contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.primary} />}

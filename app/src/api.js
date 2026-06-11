@@ -94,13 +94,14 @@ export const api = {
   addToFolder: (name, game) => request(`/folders/${encodeURIComponent(name)}/games`, { method: 'POST', body: { game } }),
   removeFromFolder: (name, gameId) => request(`/folders/${encodeURIComponent(name)}/games/${gameId}`, { method: 'DELETE' }),
 
-  // news
-  news: () => request('/news', { auth: false }),
+  // news (auth optional: when logged in they are personalized on your library)
+  news: () => request('/news'),
 
   // profile
   me: () => request('/profile/me'),
   updateProfile: (b) => request('/profile/me', { method: 'PATCH', body: b }),
   steamPair: (steamId) => request('/profile/steam-pair', { method: 'POST', body: { steamId } }),
+  steamUnlink: () => request('/profile/steam-unlink', { method: 'POST' }),
   qr: () => request('/profile/qr'),
   registerPushToken: (token) => request('/profile/push-token', { method: 'POST', body: { token } }),
 

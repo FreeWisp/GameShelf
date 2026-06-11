@@ -47,12 +47,19 @@ function rowToGame(row) {
 export const gameService = {
   rowToGame,
 
-  /** Insert or update a game (by igdb_id) into the shared catalogue. */
+  /**
+   * Insert or update a game into the shared catalogue.
+   * Match order: igdb_id → steam_appid → exact title (case-insensitive).
+   * The appid/title fallbacks are essential: games created by the Steam sync
+   * have no igdb_id yet, and an IGDB search for the same game must UPDATE that
+   * row (keeping every user's library/achievements) instead of duplicating it.
+   */
   upsert(g) {
     const id_saga = getOrCreateSaga(g.saga);
-    const existing = g.igdb_id
-      ? db.prepare('SELECT id_gioco FROM Gioco WHERE igdb_id = ?').get(g.igdb_id)
-      : db.prepare('SELECT id_gioco FROM Gioco WHERE titolo = ?').get(g.titolo);
+    const existing =
+      (g.igdb_id ? db.prepare('SELECT id_gioco FROM Gioco WHERE igdb_id = ?').get(g.igdb_id) : null)
+      ?? (g.steam_appid ? db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(g.steam_appid) : null)
+      ?? db.prepare('SELECT id_gioco FROM Gioco WHERE titolo = ? COLLATE NOCASE').get(g.titolo);
 
     const fields = {
       igdb_id: g.igdb_id ?? null,
@@ -75,10 +82,13 @@ export const gameService = {
 
     if (existing) {
       db.prepare(`UPDATE Gioco SET
+        igdb_id=COALESCE(@igdb_id, igdb_id),
         titolo=@titolo, publisher=@publisher, data_pubblicazione=@data_pubblicazione,
+        descrizione_it=CASE WHEN descrizione IS NOT @descrizione THEN NULL ELSE descrizione_it END,
         genere=@genere, descrizione=@descrizione, copertina_url=@copertina_url, id_saga=@id_saga,
         store_links=@store_links, lingue=@lingue, tags=@tags, piattaforme=@piattaforme,
-        time_to_beat=@time_to_beat, rating=@rating, steam_appid=@steam_appid, popularity=@popularity
+        time_to_beat=@time_to_beat, rating=@rating,
+        steam_appid=COALESCE(@steam_appid, steam_appid), popularity=@popularity
         WHERE id_gioco=@id_gioco`).run({ ...fields, id_gioco: existing.id_gioco });
       return this.getById(existing.id_gioco);
     }

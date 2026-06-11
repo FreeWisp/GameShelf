@@ -156,14 +156,16 @@ router.patch('/:id/diary/:noteId', (req, res) => {
   const own = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_possesso=? AND id_utente=?')
     .get(req.params.id, req.user.id);
   if (!own) return res.status(404).json({ error: 'Voce non trovata' });
-  const { testo, ore_giocate, tag, is_spoiler } = req.body ?? {};
+  const { testo, ore_giocate, tag, is_spoiler, media_url, media_tipo } = req.body ?? {};
   if (testo !== undefined && !testo.trim()) return res.status(400).json({ error: 'Il testo non può essere vuoto' });
   db.prepare(`UPDATE Diario SET
     testo = COALESCE(?, testo), ore_giocate = ?, tag = ?, is_spoiler = COALESCE(?, is_spoiler),
+    media_url = ?, media_tipo = ?,
     updated_at = datetime('now')
     WHERE id_nota = ? AND id_possesso = ?`).run(
     testo ?? null, ore_giocate ?? null, tag ?? null,
-    is_spoiler === undefined ? null : (is_spoiler ? 1 : 0), req.params.noteId, req.params.id,
+    is_spoiler === undefined ? null : (is_spoiler ? 1 : 0),
+    media_url ?? null, media_tipo ?? null, req.params.noteId, req.params.id,
   );
   res.json({ note: db.prepare('SELECT * FROM Diario WHERE id_nota = ?').get(req.params.noteId) });
 });

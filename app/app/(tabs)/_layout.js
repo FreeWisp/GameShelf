@@ -2,15 +2,14 @@ import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
-import { registerPushNotifications, notifyEpicFreeLocally } from '../../src/lib/notifications';
+import { initNotifications } from '../../src/lib/notifications';
 
 export default function TabsLayout() {
   const { colors } = useTheme();
 
   useEffect(() => {
-    // Register for push + run the local Epic free-games check once logged in.
-    registerPushNotifications();
-    notifyEpicFreeLocally();
+    // Consent popup → permissions → Epic free-games alert + daily reminder.
+    initNotifications();
   }, []);
 
   return (

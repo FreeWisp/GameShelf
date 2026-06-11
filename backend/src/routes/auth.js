@@ -20,6 +20,9 @@ router.post('/register', (req, res) => {
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'username, email e password sono obbligatori' });
   }
+  if (username.trim().length < 3) return res.status(400).json({ error: 'Username troppo corto (minimo 3 caratteri)' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Email non valida' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password troppo corta (minimo 6 caratteri)' });
   const exists = db.prepare('SELECT 1 FROM Utente WHERE email = ? OR username = ?').get(email, username);
   if (exists) return res.status(409).json({ error: 'Email o username già registrati' });
 

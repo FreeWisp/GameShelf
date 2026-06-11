@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, TextInput, View,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -72,6 +72,24 @@ export default function Profile() {
     } catch (e) { Alert.alert('Errore', e.message); }
   };
 
+  const unlinkSteam = () => {
+    Alert.alert(
+      'Scollega Steam',
+      'Verranno rimossi dalla tua libreria anche tutti i giochi importati da Steam (con i relativi diari). I giochi aggiunti manualmente restano. Continuare?',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        { text: 'Scollega', style: 'destructive', onPress: async () => {
+          try {
+            const { removed } = await api.steamUnlink();
+            await refresh();
+            setSteamId('');
+            Alert.alert('Steam scollegato', `Rimossi ${removed} giochi importati da Steam.`);
+          } catch (e) { Alert.alert('Errore', e.message); }
+        } },
+      ],
+    );
+  };
+
   // "Sign in through Steam" via OpenID 2.0 inside a WebBrowser auth session.
   const loginWithSteam = async () => {
     try {
@@ -103,7 +121,8 @@ export default function Profile() {
         <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18 }}>Profilo</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: 20 }}>
           <Pressable onPress={pickImage}>
             {user?.immagine_profilo
@@ -141,27 +160,59 @@ export default function Profile() {
           <Text style={{ color: colors.text, fontWeight: '700' }}>Scansiona QR di un amico</Text>
         </Pressable>
 
-        {/* Steam pairing */}
-        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginTop: 28, marginBottom: 8 }}>Collega Steam</Text>
-        {user?.steam_id ? <Text style={{ color: colors.accent, fontSize: 12, marginBottom: 8 }}>✓ Collegato (SteamID {user.steam_id})</Text> : null}
-        <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>Accedi con Steam per sincronizzare giochi posseduti, achievement e statistiche.</Text>
+        {/* Steam */}
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginTop: 28, marginBottom: 8 }}>Steam</Text>
 
-        <Pressable onPress={loginWithSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#171a21', borderRadius: 10, padding: 14, marginBottom: 12 }}>
-          <Ionicons name="logo-steam" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Accedi con Steam</Text>
-        </Pressable>
+        {user?.steam_id ? (
+          <>
+            {/* clearly-connected banner */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.accent + '22', borderColor: colors.accent, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+              <Ionicons name="logo-steam" size={26} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.accent, fontWeight: '800' }}>Account Steam collegato</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>SteamID {user.steam_id}</Text>
+              </View>
+              <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+            </View>
 
-        <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 6 }}>oppure inserisci manualmente lo SteamID64:</Text>
-        <TextInput style={input} value={steamId} onChangeText={setSteamId} placeholder="76561197960435530" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
-        <Pressable onPress={pairSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#1b2838', borderRadius: 10, padding: 14 }}>
-          <Ionicons name="sync" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '700' }}>{user?.steam_id ? 'Ri-sincronizza' : 'Collega manualmente'}</Text>
-        </Pressable>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable onPress={() => api.steamPair(user.steam_id).then(() => Alert.alert('Steam', 'Ri-sincronizzazione avviata.')).catch((e) => Alert.alert('Errore', e.message))}
+                style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#1b2838', borderRadius: 10, padding: 13 }}>
+                <Ionicons name="sync" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Ri-sincronizza</Text>
+              </Pressable>
+              <Pressable onPress={loginWithSteam}
+                style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#171a21', borderRadius: 10, padding: 13 }}>
+                <Ionicons name="logo-steam" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Cambia account</Text>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={unlinkSteam} style={{ marginTop: 14, alignItems: 'center' }}>
+              <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}>Scollega Steam</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 8 }}>Accedi con Steam per sincronizzare giochi posseduti, achievement e statistiche.</Text>
+            <Pressable onPress={loginWithSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#171a21', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+              <Ionicons name="logo-steam" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Accedi con Steam</Text>
+            </Pressable>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 6 }}>oppure inserisci manualmente lo SteamID64:</Text>
+            <TextInput style={input} value={steamId} onChangeText={setSteamId} placeholder="76561197960435530" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
+            <Pressable onPress={pairSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#1b2838', borderRadius: 10, padding: 14 }}>
+              <Ionicons name="sync" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Collega manualmente</Text>
+            </Pressable>
+          </>
+        )}
 
         <Pressable onPress={() => { logout(); }} style={{ marginTop: 32, alignItems: 'center' }}>
           <Text style={{ color: colors.danger, fontWeight: '700' }}>Esci</Text>
         </Pressable>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* QR scanner */}
       <Modal visible={scanner} animationType="slide" onRequestClose={() => setScanner(false)}>

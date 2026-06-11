@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform,
   Pressable, Switch, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { api } from '../../src/api';
 import { useTheme } from '../../src/context/ThemeContext';
 
@@ -25,7 +26,24 @@ export default function Diary() {
   const [ore, setOre] = useState('');
   const [tag, setTag] = useState('');
   const [spoiler, setSpoiler] = useState(false);
+  const [media, setMedia] = useState(null); // data-URI of the attached photo
   const [saving, setSaving] = useState(false);
+
+  // Attach a photo from the gallery or straight from the camera.
+  const pickPhoto = async (fromCamera) => {
+    try {
+      const opts = { mediaTypes: ['images'], quality: 0.3, base64: true };
+      let res;
+      if (fromCamera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) return Alert.alert('Fotocamera', 'Permesso fotocamera negato.');
+        res = await ImagePicker.launchCameraAsync(opts);
+      } else {
+        res = await ImagePicker.launchImageLibraryAsync(opts);
+      }
+      if (!res.canceled) setMedia(`data:image/jpeg;base64,${res.assets[0].base64}`);
+    } catch (e) { Alert.alert('Errore', e.message); }
+  };
 
   const load = useCallback(async () => {
     try { const d = await api.diary(possesso); setNotes(d.notes); }
@@ -36,18 +54,21 @@ export default function Diary() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const openNew = () => {
-    setEditing(null); setTesto(''); setOre(''); setTag(''); setSpoiler(false); setModal(true);
+    setEditing(null); setTesto(''); setOre(''); setTag(''); setSpoiler(false); setMedia(null); setModal(true);
   };
   const openEdit = (n) => {
     setEditing(n);
     setTesto(n.testo); setOre(n.ore_giocate ? String(n.ore_giocate) : '');
-    setTag(n.tag ?? ''); setSpoiler(!!n.is_spoiler); setModal(true);
+    setTag(n.tag ?? ''); setSpoiler(!!n.is_spoiler); setMedia(n.media_url ?? null); setModal(true);
   };
 
   const save = async () => {
     if (!testo.trim()) { Alert.alert('Nota vuota', 'Scrivi qualcosa prima di salvare.'); return; }
     setSaving(true);
-    const body = { testo: testo.trim(), ore_giocate: ore ? Number(ore) : null, tag: tag.trim() || null, is_spoiler: spoiler };
+    const body = {
+      testo: testo.trim(), ore_giocate: ore ? Number(ore) : null, tag: tag.trim() || null,
+      is_spoiler: spoiler, media_url: media, media_tipo: media ? 'image' : null,
+    };
     try {
       if (editing) await api.updateNote(possesso, editing.id_nota, body);
       else await api.addNote(possesso, body);
@@ -98,7 +119,12 @@ export default function Diary() {
                 </View>
                 {item.tag ? <Text style={{ color: colors.star, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>🏷️ {item.tag}</Text> : null}
                 {open ? (
-                  <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>{item.testo}</Text>
+                  <>
+                    <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>{item.testo}</Text>
+                    {item.media_url ? (
+                      <Image source={{ uri: item.media_url }} style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10 }} resizeMode="cover" />
+                    ) : null}
+                  </>
                 ) : (
                   <Pressable onPress={() => setRevealed((r) => ({ ...r, [item.id_nota]: true }))} style={{ backgroundColor: colors.surfaceAlt, borderRadius: 8, padding: 14, alignItems: 'center' }}>
                     <Text style={{ color: colors.textMuted, fontWeight: '700', letterSpacing: 1 }}>[ SPOILER – TOCCA PER LEGGERE ]</Text>
@@ -137,6 +163,26 @@ export default function Diary() {
                 <TextInput style={{ color: colors.text, paddingVertical: 8, width: 50 }} keyboardType="numeric" value={ore} onChangeText={setOre} placeholder="0" placeholderTextColor={colors.textMuted} />
               </View>
               <TextInput style={{ flex: 1, color: colors.text, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }} placeholder="🏷️ Tag" placeholderTextColor={colors.textMuted} value={tag} onChangeText={setTag} />
+            </View>
+            {/* photo attachment */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 }}>
+              <Pressable onPress={() => pickPhoto(false)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 }}>
+                <Ionicons name="images-outline" size={16} color={colors.text} />
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>Galleria</Text>
+              </Pressable>
+              <Pressable onPress={() => pickPhoto(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceAlt, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 }}>
+                <Ionicons name="camera-outline" size={16} color={colors.text} />
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>Scatta</Text>
+              </Pressable>
+              {media ? (
+                <View>
+                  <Image source={{ uri: media }} style={{ width: 52, height: 52, borderRadius: 8 }} />
+                  <Pressable onPress={() => setMedia(null)} hitSlop={8}
+                    style={{ position: 'absolute', top: -6, right: -6, backgroundColor: colors.danger, borderRadius: 999, padding: 2 }}>
+                    <Ionicons name="close" size={12} color="#fff" />
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
               <Text style={{ color: colors.text }}>👁️ Spoiler</Text>

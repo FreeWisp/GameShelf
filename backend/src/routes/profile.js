@@ -43,6 +43,16 @@ router.post('/steam-pair', (req, res) => {
   res.status(202).json({ ok: true, jobId });
 });
 
+// POST /profile/steam-unlink — remove the Steam pairing and the games it imported.
+// (User-added games are untouched: only entries with store_acquisto = 'steam' go.)
+router.post('/steam-unlink', (req, res) => {
+  db.prepare('UPDATE Utente SET steam_id = NULL WHERE id_utente = ?').run(req.user.id);
+  const info = db.prepare(
+    "DELETE FROM Libreria_Utente WHERE id_utente = ? AND store_acquisto = 'steam'",
+  ).run(req.user.id);
+  res.json({ ok: true, removed: info.changes });
+});
+
 // POST /profile/push-token { token } — register this device for push
 router.post('/push-token', (req, res) => {
   const { token } = req.body ?? {};

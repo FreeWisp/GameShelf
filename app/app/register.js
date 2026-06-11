@@ -15,7 +15,11 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
 
   const onSubmit = async () => {
-    setErr(null); setBusy(true);
+    setErr(null);
+    if (username.trim().length < 3) return setErr('Username troppo corto (minimo 3 caratteri).');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setErr('Inserisci un indirizzo email valido.');
+    if (password.length < 6) return setErr('La password deve avere almeno 6 caratteri.');
+    setBusy(true);
     try { await register(username.trim(), email.trim(), password); }
     catch (e) { setErr(e.message); }
     finally { setBusy(false); }

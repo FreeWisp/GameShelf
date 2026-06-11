@@ -14,6 +14,7 @@ export default function News() {
   const { colors } = useTheme();
   const [news, setNews] = useState([]);
   const [epic, setEpic] = useState([]);
+  const [personalized, setPersonalized] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -21,6 +22,7 @@ export default function News() {
     try {
       const [n, e] = await Promise.all([api.news(), api.epicFree().catch(() => ({ free: [] }))]);
       setNews(n.news ?? []);
+      setPersonalized(!!n.personalized);
       setEpic(e.free ?? []);
     } catch { setNews([]); }
     finally { setLoading(false); setRefreshing(false); }
@@ -51,7 +53,10 @@ export default function News() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
-      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginVertical: 12 }}>NEWS DI GIOCO</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', textAlign: 'center', marginTop: 12 }}>NEWS DI GIOCO</Text>
+      <Text style={{ color: personalized ? colors.accent : colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 2, marginBottom: 10 }}>
+        {personalized ? '✦ In base ai giochi della tua libreria e wishlist' : 'Dai giochi più popolari'}
+      </Text>
       {loading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 30 }} />
       ) : (
