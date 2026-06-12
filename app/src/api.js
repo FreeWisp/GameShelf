@@ -50,13 +50,21 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && inMemoryToken) headers.Authorization = `Bearer ${inMemoryToken}`;
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // Network-level failure (backend down, wrong IP, no wifi…)
+    throw new Error('Impossibile raggiungere il server. Controlla che il backend sia avviato.');
+  }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; }
+  catch { throw new Error(`Risposta non valida dal server (HTTP ${res.status})`); }
   if (!res.ok) throw new Error(data.error || `Errore ${res.status}`);
   return data;
 }

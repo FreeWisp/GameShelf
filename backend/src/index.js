@@ -20,7 +20,7 @@ queue.start();
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '15mb' })); // diary photos travel as base64
 
 app.get('/health', (req, res) => res.json({
   ok: true,

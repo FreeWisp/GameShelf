@@ -18,20 +18,23 @@ export default function Search() {
   const [source, setSource] = useState(null);
   const [loading, setLoading] = useState(false);
   const debounce = useRef(null);
+  const reqSeq = useRef(0); // guards against slow responses overwriting newer ones
 
   useEffect(() => { api.popular(18).then((d) => setPopular(d.games)).catch(() => {}); }, []);
 
   const runSearch = useCallback(async (q) => {
-    if (!q.trim()) { setResults(null); setDidYouMean(null); setCorrected(false); setSource(null); return; }
+    const seq = ++reqSeq.current;
+    if (!q.trim()) { setResults(null); setDidYouMean(null); setCorrected(false); setSource(null); setLoading(false); return; }
     setLoading(true);
     try {
       const d = await api.search(q);
+      if (seq !== reqSeq.current) return; // a newer search superseded this one
       setResults(d.games);
       setDidYouMean(d.didYouMean ?? null);
       setCorrected(!!d.corrected);
       setSource(d.source);
-    } catch { setResults([]); }
-    finally { setLoading(false); }
+    } catch { if (seq === reqSeq.current) setResults([]); }
+    finally { if (seq === reqSeq.current) setLoading(false); }
   }, []);
 
   const onChange = (text) => {

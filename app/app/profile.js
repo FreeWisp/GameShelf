@@ -58,6 +58,7 @@ export default function Profile() {
       await api.updateProfile(body);
       await refresh();
       setPassword('');
+      api.qr().then((d) => setQr(d.encoded)).catch(() => {}); // QR carries the username
       Alert.alert('Salvato', 'Profilo aggiornato.');
     } catch (e) { Alert.alert('Errore', e.message); }
     finally { setBusy(false); }

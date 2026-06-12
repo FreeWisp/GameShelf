@@ -14,12 +14,21 @@ function imageOf(el, types = ['OfferImageWide', 'DieselStoreFrontWide', 'Thumbna
 }
 
 function slugUrl(el) {
-  const slug =
-    el.productSlug ||
-    el.urlSlug ||
-    el.catalogNs?.mappings?.[0]?.pageSlug ||
-    el.offerMappings?.[0]?.pageSlug;
-  return slug ? `https://store.epicgames.com/it/p/${slug}` : 'https://store.epicgames.com/it/free-games';
+  // Epic's metadata shape changes often: productSlug is frequently null now and
+  // urlSlug can be a meaningless hex hash. The reliable slug lives in the page
+  // mappings (offerMappings / catalogNs.mappings), so those win.
+  const mapping =
+    el.offerMappings?.find((m) => m.pageType === 'productHome')?.pageSlug ??
+    el.catalogNs?.mappings?.find((m) => m.pageType === 'productHome')?.pageSlug ??
+    el.offerMappings?.[0]?.pageSlug ??
+    el.catalogNs?.mappings?.[0]?.pageSlug;
+
+  let slug = (mapping || el.productSlug || el.urlSlug || '').replace(/\/home$/, '').trim();
+  // Discard junk slugs Epic sometimes returns ("[]", 32-char hex ids).
+  if (!slug || slug === '[]' || /^[0-9a-f]{16,}$/i.test(slug)) {
+    return 'https://store.epicgames.com/it/free-games';
+  }
+  return `https://store.epicgames.com/it/p/${slug}`;
 }
 
 function shape(el, window) {
