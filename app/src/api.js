@@ -115,4 +115,26 @@ export const api = {
 
   // epic free games
   epicFree: () => request('/epic/free', { auth: false }),
+
+  // job queue inspection
+  job: (id) => request(`/jobs/${id}`, { auth: false }),
 };
+
+/**
+ * Poll a queue job until it completes; resolves with the job result.
+ * Used to show real progress (e.g. Steam library sync) instead of
+ * fire-and-forget feedback.
+ */
+export async function waitForJob(jobId, { timeoutMs = 90000, intervalMs = 1500, onTick } = {}) {
+  const start = Date.now();
+  for (;;) {
+    const { job } = await api.job(jobId);
+    onTick?.(job);
+    if (job.status === 'done') return job.result;
+    if (job.status === 'failed') throw new Error(job.error || 'Operazione fallita');
+    if (Date.now() - start > timeoutMs) {
+      throw new Error('La sincronizzazione sta impiegando più del previsto: controlla la libreria tra qualche istante.');
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}

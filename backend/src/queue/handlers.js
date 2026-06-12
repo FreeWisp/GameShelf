@@ -5,6 +5,7 @@ import { steamService } from '../services/steamService.js';
 import { gameService } from '../services/gameService.js';
 import { epicService } from '../services/epicService.js';
 import { pushService } from '../services/pushService.js';
+import { similarity } from '../utils/levenshtein.js';
 
 /**
  * Register every long-running / external-facing task as a queue handler.
@@ -48,23 +49,14 @@ export function registerHandlers() {
     if (privacy === 'public' && !accessible) privacy = 'games_private';
     db.prepare('UPDATE Utente SET steam_privacy = ? WHERE id_utente = ?').run(privacy, userId);
 
-    // Most-played first, so the richest titles get the (capped) IGDB enrichment.
-    const sorted = [...owned].sort((a, b) => (b.playtime_forever ?? 0) - (a.playtime_forever ?? 0));
-    let linked = 0, enriched = 0;
-
-    for (const o of sorted.slice(0, 60)) {
-      let game = db.prepare('SELECT * FROM Gioco WHERE steam_appid = ?').get(o.appid);
+    // PHASE 1 (fast): link EVERY owned game right away using lightweight
+    // catalogue entries (Steam capsule cover). No IGDB calls here, so even an
+    // 85-game library syncs in seconds instead of a minute.
+    let linked = 0;
+    for (const o of owned) {
+      let game = db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(o.appid);
       if (!game) {
-        // Try to pull full IGDB metadata by title (best-effort, capped).
-        let igdbData = null;
-        if (igdbService.enabled && enriched < 40) {
-          try {
-            const results = await igdbService.search(o.name, 1);
-            const top = results?.[0];
-            if (top && top.titolo?.toLowerCase() === o.name.toLowerCase()) { igdbData = top; enriched++; }
-          } catch { /* ignore IGDB hiccups */ }
-        }
-        game = gameService.upsert(igdbData ? { ...igdbData, steam_appid: o.appid } : {
+        game = gameService.upsert({
           titolo: o.name, steam_appid: o.appid,
           // proper portrait capsule instead of the tiny pixelated icon
           copertina_url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${o.appid}/library_600x900.jpg`,
@@ -72,18 +64,47 @@ export function registerHandlers() {
           popularity: Math.round((o.playtime_forever ?? 0) / 60),
         });
       }
-      const id_gioco = game.id_gioco;
-      const existing = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, id_gioco);
+      const existing = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, game.id_gioco);
       // NON-DESTRUCTIVE sync: only add genuinely new games. Existing entries are
       // left untouched — the user's choices always win over the Steam default
       // (status, "non lo possiedo più", favourite, wishlist, notes are kept).
       if (!existing) {
         db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned, status_auto)
-                    VALUES (?, ?, 'steam', ?, 1, 1)`).run(userId, id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
+                    VALUES (?, ?, 'steam', ?, 1, 1)`).run(userId, game.id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
         linked++;
       }
     }
-    return { owned: owned.length, linked, enriched, privacy };
+
+    // PHASE 2 (background): IGDB metadata enrichment runs as a separate job so
+    // the sync the user is waiting on stays fast.
+    queue.enqueueOnce('steam_enrich', { limit: 40 });
+
+    return { owned: owned.length, linked, privacy };
+  });
+
+  // Fill IGDB metadata for catalogue rows created by Steam syncs (igdb_id still
+  // NULL). Newest first; upsert matches by steam_appid so rows update in place.
+  queue.register('steam_enrich', async ({ limit = 40 }) => {
+    if (!igdbService.enabled) return { enriched: 0 };
+    const rows = db.prepare(
+      `SELECT id_gioco, titolo, steam_appid FROM Gioco
+       WHERE steam_appid IS NOT NULL AND igdb_id IS NULL
+       ORDER BY id_gioco DESC LIMIT ?`,
+    ).all(limit);
+
+    const norm = (s = '') => s.replace(/[™®©]/g, '').trim().toLowerCase();
+    let enriched = 0;
+    for (const row of rows) {
+      try {
+        const results = await igdbService.search(row.titolo, 1);
+        const top = results?.[0];
+        if (top && (norm(top.titolo) === norm(row.titolo) || similarity(norm(top.titolo), norm(row.titolo)) >= 0.85)) {
+          gameService.upsert({ ...top, steam_appid: row.steam_appid });
+          enriched++;
+        }
+      } catch { /* best effort, keep going */ }
+    }
+    return { candidates: rows.length, enriched };
   });
 
   // Fetch & cache per-user Steam community data (stats + achievements) for a game.

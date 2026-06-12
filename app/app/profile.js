@@ -10,7 +10,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { api, steamLoginUrl } from '../src/api';
+import { api, steamLoginUrl, waitForJob } from '../src/api';
 import { openLink } from '../src/lib/links';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
@@ -27,6 +27,7 @@ export default function Profile() {
   const [busy, setBusy] = useState(false);
   const [scanner, setScanner] = useState(false);
   const [scanned, setScanned] = useState(null);
+  const [syncing, setSyncing] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
@@ -68,13 +69,28 @@ export default function Profile() {
     finally { setBusy(false); }
   };
 
-  const pairSteam = async () => {
-    if (!steamId.trim()) return Alert.alert('Steam', 'Inserisci il tuo SteamID64.');
+  // Run a sync and FOLLOW it (spinner + real outcome) instead of fire-and-forget.
+  const runSync = async (sid) => {
+    if (syncing) return;
+    setSyncing(true);
     try {
-      await api.steamPair(steamId.trim());
+      const { jobId } = await api.steamPair(sid);
+      const result = await waitForJob(jobId, { timeoutMs: 120000 });
       await refresh();
-      Alert.alert('Steam collegato', 'La sincronizzazione della libreria è stata avviata (coda).');
-    } catch (e) { Alert.alert('Errore', e.message); }
+      if (result?.privacy && result.privacy !== 'public') {
+        Alert.alert('Profilo Steam privato', 'Steam non permette di leggere i giochi di questo account: rendi pubblici i "dettagli di gioco" e riprova.');
+      } else if ((result?.linked ?? 0) > 0) {
+        Alert.alert('Sincronizzazione completata', `${result.linked} nuovi giochi importati (${result.owned} posseduti su Steam).`);
+      } else {
+        Alert.alert('Libreria già aggiornata', `Nessun nuovo gioco da importare (${result?.owned ?? 0} posseduti su Steam).`);
+      }
+    } catch (e) { Alert.alert('Sincronizzazione', e.message); }
+    finally { setSyncing(false); }
+  };
+
+  const pairSteam = () => {
+    if (!steamId.trim()) return Alert.alert('Steam', 'Inserisci il tuo SteamID64.');
+    runSync(steamId.trim());
   };
 
   const unlinkSteam = () => {
@@ -168,6 +184,17 @@ export default function Profile() {
         {/* Steam */}
         <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginTop: 28, marginBottom: 8 }}>Steam</Text>
 
+        {/* live sync progress — shown for both first pairing and re-sync */}
+        {syncing && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+            <ActivityIndicator color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '700' }}>Sincronizzazione in corso…</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>Sto importando la tua libreria Steam. Puoi continuare a usare l'app.</Text>
+            </View>
+          </View>
+        )}
+
         {user?.steam_id ? (
           <>
             {/* clearly-connected banner */}
@@ -199,24 +226,20 @@ export default function Profile() {
               </View>
             )}
 
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Pressable onPress={() => api.steamPair(user.steam_id).then(() => {
-                  Alert.alert('Steam', 'Ri-sincronizzazione avviata.');
-                  // the sync (and privacy detection) runs on the queue — refresh shortly after
-                  setTimeout(() => refresh().catch(() => {}), 6000);
-                }).catch((e) => Alert.alert('Errore', e.message))}
+            <View style={{ flexDirection: 'row', gap: 10, opacity: syncing ? 0.5 : 1 }}>
+              <Pressable disabled={syncing} onPress={() => runSync(user.steam_id)}
                 style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#1b2838', borderRadius: 10, padding: 13 }}>
                 <Ionicons name="sync" size={16} color="#fff" />
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Ri-sincronizza</Text>
               </Pressable>
-              <Pressable onPress={loginWithSteam}
+              <Pressable disabled={syncing} onPress={loginWithSteam}
                 style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#171a21', borderRadius: 10, padding: 13 }}>
                 <Ionicons name="logo-steam" size={16} color="#fff" />
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Cambia account</Text>
               </Pressable>
             </View>
 
-            <Pressable onPress={unlinkSteam} style={{ marginTop: 14, alignItems: 'center' }}>
+            <Pressable disabled={syncing} onPress={unlinkSteam} style={{ marginTop: 14, alignItems: 'center', opacity: syncing ? 0.5 : 1 }}>
               <Text style={{ color: colors.danger, fontWeight: '700', fontSize: 13 }}>Scollega Steam</Text>
             </Pressable>
           </>
@@ -229,7 +252,7 @@ export default function Profile() {
             </Pressable>
             <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 6 }}>oppure inserisci manualmente lo SteamID64:</Text>
             <TextInput style={input} value={steamId} onChangeText={setSteamId} placeholder="76561197960435530" placeholderTextColor={colors.textMuted} keyboardType="numeric" />
-            <Pressable onPress={pairSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#1b2838', borderRadius: 10, padding: 14 }}>
+            <Pressable disabled={syncing} onPress={pairSteam} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: '#1b2838', borderRadius: 10, padding: 14, opacity: syncing ? 0.5 : 1 }}>
               <Ionicons name="sync" size={18} color="#fff" />
               <Text style={{ color: '#fff', fontWeight: '700' }}>Collega manualmente</Text>
             </Pressable>
