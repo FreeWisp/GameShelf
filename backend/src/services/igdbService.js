@@ -186,6 +186,31 @@ export const igdbService = {
     return enrich(merged.slice(0, limit));
   },
 
+  /**
+   * Typo-recovery probe ("forse cercavi…"). IGDB has no fuzzy search, so when a
+   * query returns nothing we probe progressively shorter PREFIXES of the query
+   * with IGDB's starts-with match (`name ~ "prefix"*`). E.g. "fortnait" →
+   * "fortnai" → "fortna" → "fortn" → matches Fortnite & co. The caller then
+   * ranks the candidates by Levenshtein distance to the original query.
+   */
+  async suggest(query, limit = 10) {
+    if (!igdbEnabled) return [];
+    const safe = query.replace(/["\\*]/g, '').trim().toLowerCase();
+    if (safe.length < 4) return [];
+    // Probe down to short prefixes: early typos ("eldn rng") need ~3 chars.
+    // Junk candidates are filtered later by Levenshtein similarity.
+    const minLen = Math.max(3, Math.floor(safe.length * 0.4));
+    for (let len = safe.length - 1; len >= minLen; len--) {
+      const prefix = safe.slice(0, len);
+      const rows = await igdbQuery(
+        'games',
+        `${FIELDS} where name ~ "${prefix}"*; sort total_rating_count desc; limit ${limit};`,
+      ).catch(() => []);
+      if (rows.length) return enrich(rows);
+    }
+    return [];
+  },
+
   /** Most popular games of the moment (recent + highly followed). */
   async popular(limit = 16) {
     if (!igdbEnabled) {

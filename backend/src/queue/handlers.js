@@ -26,6 +26,14 @@ export function registerHandlers() {
     return { games: saved };
   });
 
+  // Typo-recovery probe ("forse cercavi…"): prefix-based IGDB lookup, results
+  // persisted so the catalogue keeps growing.
+  queue.register('igdb_suggest', async ({ query, limit = 10 }) => {
+    const games = await igdbService.suggest(query, limit);
+    const saved = games.map((g) => gameService.upsert(g));
+    return { games: saved };
+  });
+
   // Pair / sync a user's Steam library (owned games) into their shelf.
   queue.register('steam_sync', async ({ userId, steamId }) => {
     const owned = await steamService.getOwnedGames(steamId);

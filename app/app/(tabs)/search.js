@@ -14,6 +14,7 @@ export default function Search() {
   const [popular, setPopular] = useState([]);
   const [results, setResults] = useState(null);
   const [didYouMean, setDidYouMean] = useState(null);
+  const [corrected, setCorrected] = useState(false);
   const [source, setSource] = useState(null);
   const [loading, setLoading] = useState(false);
   const debounce = useRef(null);
@@ -21,12 +22,13 @@ export default function Search() {
   useEffect(() => { api.popular(18).then((d) => setPopular(d.games)).catch(() => {}); }, []);
 
   const runSearch = useCallback(async (q) => {
-    if (!q.trim()) { setResults(null); setDidYouMean(null); setSource(null); return; }
+    if (!q.trim()) { setResults(null); setDidYouMean(null); setCorrected(false); setSource(null); return; }
     setLoading(true);
     try {
       const d = await api.search(q);
       setResults(d.games);
       setDidYouMean(d.didYouMean ?? null);
+      setCorrected(!!d.corrected);
       setSource(d.source);
     } catch { setResults([]); }
     finally { setLoading(false); }
@@ -38,7 +40,10 @@ export default function Search() {
     debounce.current = setTimeout(() => runSearch(text), 450);
   };
 
-  const acceptSuggestion = () => { setQuery(didYouMean); setDidYouMean(null); runSearch(didYouMean); };
+  const acceptSuggestion = () => {
+    const t = didYouMean;
+    setQuery(t); setDidYouMean(null); setCorrected(false); runSearch(t);
+  };
   const data = results ?? popular;
 
   return (
@@ -56,18 +61,25 @@ export default function Search() {
         {query ? <Pressable onPress={() => onChange('')}><Ionicons name="close-circle" size={18} color={colors.textMuted} /></Pressable> : null}
       </View>
 
-      {/* Levenshtein "forse cercavi" suggestion (computed server-side) */}
+      {/* Levenshtein "forse cercavi" (server-side: IGDB prefix probe + edit distance).
+          corrected=true → results already show the corrected title. */}
       {didYouMean && (
         <Pressable onPress={acceptSuggestion}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 10, backgroundColor: colors.surfaceAlt, borderRadius: 10, padding: 10 }}>
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 10, backgroundColor: corrected ? colors.primary + '18' : colors.surfaceAlt, borderRadius: 10, padding: 10, borderWidth: corrected ? 1 : 0, borderColor: colors.primary }}>
           <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
-          <Text style={{ color: colors.textMuted, flex: 1 }}>Forse cercavi: <Text style={{ color: colors.primary, fontWeight: '700' }}>{didYouMean}</Text></Text>
+          {corrected ? (
+            <Text style={{ color: colors.textMuted, flex: 1 }}>
+              Nessun risultato per “{query.trim()}”. Mostro: <Text style={{ color: colors.primary, fontWeight: '700' }}>{didYouMean}</Text>
+            </Text>
+          ) : (
+            <Text style={{ color: colors.textMuted, flex: 1 }}>Forse cercavi: <Text style={{ color: colors.primary, fontWeight: '700' }}>{didYouMean}</Text></Text>
+          )}
           <Ionicons name="arrow-forward" size={16} color={colors.primary} />
         </Pressable>
       )}
       {source && results && (
         <Text style={{ color: colors.textMuted, fontSize: 11, paddingHorizontal: 16, marginTop: 6 }}>
-          {results.length} risultati · fonte: {source === 'igdb' ? 'IGDB (scaricati nel DB)' : 'catalogo'}
+          {results.length} risultati · fonte: {source === 'igdb' ? 'IGDB (scaricati nel DB)' : source === 'igdb-suggest' ? 'IGDB (correzione typo)' : 'catalogo'}
         </Text>
       )}
 

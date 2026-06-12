@@ -38,24 +38,57 @@ router.get('/popular', async (req, res) => {
  * GET /games/search?q=...
  * Returns results with IGDB-grade relevance. We query IGDB (via the load-
  * leveling queue), persist the results into the shared catalogue, and return
- * them IN IGDB's RELEVANCE ORDER — we no longer re-rank the whole catalogue by
- * edit distance (that produced unrelated results). A local substring search is
- * used as a fast path / offline fallback.
+ * them IN IGDB's RELEVANCE ORDER.
+ *
+ * Typo recovery ("forse cercavi…", req. 4): IGDB has NO fuzzy search, so when
+ * it returns nothing we collect candidates from (a) the local catalogue ranked
+ * by LEVENSHTEIN distance and (b) an IGDB prefix probe ("fortnait" → "fortn"* →
+ * Fortnite…). The candidate closest to the query (similarity ≥ 0.5) becomes the
+ * correction: we re-run the full search with it and return `didYouMean` +
+ * `corrected: true`.
  */
 router.get('/search', async (req, res) => {
   const q = (req.query.q ?? '').toString().trim();
   if (!q) return res.json({ games: [], source: 'empty' });
 
-  // Fast path: if the catalogue already contains strong matches for the query
-  // (title contains it) AND IGDB is off, answer locally. Otherwise hit IGDB.
   try {
     const result = await queue.enqueueAndWait('igdb_search', { query: q }, 25000);
     const games = result?.games ?? [];
     if (games.length) {
       return res.json({ games, bestMatch: games[0], didYouMean: didYouMean(q, games), source: 'igdb' });
     }
-    // IGDB returned nothing (or disabled) → fall back to the local catalogue.
+
+    // ---- Typo recovery: local Levenshtein + IGDB prefix probe ----
     const local = gameService.searchLocal(q);
+    const candidates = [...local.results];
+    try {
+      const sugg = await queue.enqueueAndWait('igdb_suggest', { query: q }, 20000);
+      candidates.push(...(sugg?.games ?? []));
+    } catch { /* probe is best-effort */ }
+
+    const best = candidates
+      .map((g) => ({ g, sim: similarity(q, g.titolo) }))
+      .sort((a, b) => b.sim - a.sim)[0];
+
+    if (best && best.sim >= 0.5) {
+      // Re-run the proper search with the corrected title for full results.
+      let corrected = [];
+      try {
+        const r2 = await queue.enqueueAndWait('igdb_search', { query: best.g.titolo }, 25000);
+        corrected = r2?.games ?? [];
+      } catch { /* ignore */ }
+      if (!corrected.length) {
+        const seen = new Set();
+        corrected = candidates
+          .filter((g) => !seen.has(g.id_gioco) && seen.add(g.id_gioco))
+          .sort((a, b) => similarity(q, b.titolo) - similarity(q, a.titolo));
+      }
+      return res.json({
+        games: corrected, bestMatch: corrected[0] ?? null,
+        didYouMean: best.g.titolo, corrected: true, source: 'igdb-suggest',
+      });
+    }
+
     return res.json({
       games: local.results, bestMatch: local.bestMatch,
       didYouMean: didYouMean(q, local.results), source: 'catalogue',
