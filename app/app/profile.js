@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import { api, steamLoginUrl } from '../src/api';
+import { openLink } from '../src/lib/links';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/context/ThemeContext';
 
@@ -28,7 +29,10 @@ export default function Profile() {
   const [scanned, setScanned] = useState(null);
   const [permission, requestPermission] = useCameraPermissions();
 
-  useEffect(() => { api.qr().then((d) => setQr(d.encoded)).catch(() => {}); }, []);
+  useEffect(() => {
+    api.qr().then((d) => setQr(d.encoded)).catch(() => {});
+    refresh().catch(() => {}); // pick up steam_privacy set by the async sync
+  }, []);
 
   const pickImage = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5, base64: true, allowsEditing: true, aspect: [1, 1] });
@@ -176,8 +180,31 @@ export default function Profile() {
               <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
             </View>
 
+            {/* Privacy warning: games/stats/achievements not accessible */}
+            {user?.steam_privacy && user.steam_privacy !== 'public' && (
+              <View style={{ flexDirection: 'row', gap: 10, backgroundColor: '#F59E0B22', borderColor: '#F59E0B', borderWidth: 1, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+                <Ionicons name="lock-closed" size={22} color="#F59E0B" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#F59E0B', fontWeight: '800' }}>
+                    {user.steam_privacy === 'profile_private' ? 'Profilo Steam privato' : 'Dettagli di gioco privati'}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                    Giochi, statistiche e obiettivi non sono accessibili. Su Steam imposta
+                    "I miei dettagli di gioco" su Pubblico, poi tocca Ri-sincronizza.
+                  </Text>
+                  <Pressable onPress={() => openLink('https://steamcommunity.com/my/edit/settings')} hitSlop={6}>
+                    <Text style={{ color: '#F59E0B', fontWeight: '700', fontSize: 12, marginTop: 6 }}>Apri impostazioni privacy Steam ›</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Pressable onPress={() => api.steamPair(user.steam_id).then(() => Alert.alert('Steam', 'Ri-sincronizzazione avviata.')).catch((e) => Alert.alert('Errore', e.message))}
+              <Pressable onPress={() => api.steamPair(user.steam_id).then(() => {
+                  Alert.alert('Steam', 'Ri-sincronizzazione avviata.');
+                  // the sync (and privacy detection) runs on the queue — refresh shortly after
+                  setTimeout(() => refresh().catch(() => {}), 6000);
+                }).catch((e) => Alert.alert('Errore', e.message))}
                 style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#1b2838', borderRadius: 10, padding: 13 }}>
                 <Ionicons name="sync" size={16} color="#fff" />
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Ri-sincronizza</Text>

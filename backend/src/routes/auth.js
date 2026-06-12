@@ -9,7 +9,8 @@ function publicUser(u) {
   return {
     id_utente: u.id_utente, username: u.username, email: u.email,
     bio: u.bio, immagine_profilo: u.immagine_profilo,
-    preferenze_ui: safeJson(u.preferenze_ui), steam_id: u.steam_id,
+    preferenze_ui: safeJson(u.preferenze_ui),
+    steam_id: u.steam_id, steam_privacy: u.steam_privacy,
   };
 }
 const safeJson = (s) => { try { return JSON.parse(s); } catch { return {}; } };

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS Utente (
   immagine_profilo TEXT,
   preferenze_ui    TEXT DEFAULT '{"theme":"dark"}',   -- JSON
   steam_id         TEXT,                                -- set after Steam pairing
+  steam_privacy    TEXT,    -- public | profile_private | games_private (set by steam_sync)
   created_at       TEXT DEFAULT (datetime('now'))
 );
 

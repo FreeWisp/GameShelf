@@ -36,7 +36,18 @@ export function registerHandlers() {
 
   // Pair / sync a user's Steam library (owned games) into their shelf.
   queue.register('steam_sync', async ({ userId, steamId }) => {
-    const owned = await steamService.getOwnedGames(steamId);
+    // Privacy detection: a private profile (or private "game details") makes
+    // games, stats and achievements inaccessible — the app surfaces a warning.
+    let privacy = 'public';
+    try {
+      const summary = await steamService.getPlayerSummary(steamId);
+      if (summary && summary.communityvisibilitystate !== 3) privacy = 'profile_private';
+    } catch { /* keep optimistic default */ }
+
+    const { games: owned, accessible } = await steamService.getOwnedGames(steamId);
+    if (privacy === 'public' && !accessible) privacy = 'games_private';
+    db.prepare('UPDATE Utente SET steam_privacy = ? WHERE id_utente = ?').run(privacy, userId);
+
     // Most-played first, so the richest titles get the (capped) IGDB enrichment.
     const sorted = [...owned].sort((a, b) => (b.playtime_forever ?? 0) - (a.playtime_forever ?? 0));
     let linked = 0, enriched = 0;
@@ -72,7 +83,7 @@ export function registerHandlers() {
         linked++;
       }
     }
-    return { owned: owned.length, linked, enriched };
+    return { owned: owned.length, linked, enriched, privacy };
   });
 
   // Fetch & cache per-user Steam community data (stats + achievements) for a game.
@@ -98,13 +109,25 @@ export function registerHandlers() {
   });
 
   // Aggregate Steam news for a set of app ids (News tab). Keep only Latin-script
-  // (Italian/English-ish) items — Steam returns posts in many languages.
+  // (Italian/English-ish) items — Steam returns posts in many languages. Each
+  // item carries the catalogue game it belongs to (tag shown in the app).
   queue.register('steam_news', async ({ appids = [], count = 5 }) => {
+    const gameByAppid = {};
+    for (const appid of appids) {
+      const g = db.prepare('SELECT id_gioco, titolo FROM Gioco WHERE steam_appid = ?').get(appid);
+      if (g) gameByAppid[appid] = g;
+    }
+
     const all = [];
     for (const appid of appids) {
       try {
         const items = await steamService.getNewsForApp(appid, count);
-        all.push(...items.map((n) => ({ ...n, appid })));
+        all.push(...items.map((n) => ({
+          ...n,
+          appid,
+          gioco: gameByAppid[appid]?.titolo ?? null,
+          id_gioco: gameByAppid[appid]?.id_gioco ?? null,
+        })));
       } catch { /* skip failing app */ }
     }
     const isLatin = (s = '') => {

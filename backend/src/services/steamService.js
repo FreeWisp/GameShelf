@@ -29,12 +29,22 @@ export const steamService = {
     return data?.playerstats ?? null;
   },
 
-  // 3.1.3
+  // Player summary — communityvisibilitystate: 3 = public, 1/2 = private/friends.
+  async getPlayerSummary(steamid) {
+    const data = await steamGet('ISteamUser/GetPlayerSummaries/v0002/', { steamids: steamid });
+    return data?.response?.players?.[0] ?? null;
+  },
+
+  // 3.1.3 — `accessible` distinguishes private "game details" (empty response,
+  // no game_count at all) from a genuinely empty-but-public library.
   async getOwnedGames(steamid) {
     const data = await steamGet('IPlayerService/GetOwnedGames/v0001/', {
       steamid, include_appinfo: 1, include_played_free_games: 1,
     });
-    return data?.response?.games ?? [];
+    return {
+      games: data?.response?.games ?? [],
+      accessible: data?.response?.game_count !== undefined,
+    };
   },
 
   // 3.1.4

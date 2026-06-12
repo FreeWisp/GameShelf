@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../../src/api';
 import { openLink } from '../../src/lib/links';
@@ -12,6 +13,7 @@ function stripHtml(s = '') {
 
 export default function News() {
   const { colors } = useTheme();
+  const router = useRouter();
   const [news, setNews] = useState([]);
   const [epic, setEpic] = useState([]);
   const [personalized, setPersonalized] = useState(false);
@@ -69,10 +71,21 @@ export default function News() {
           renderItem={({ item }) => (
             <Pressable onPress={() => item.url && openLink(item.url)}
               style={{ backgroundColor: colors.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: colors.border }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <Ionicons name="newspaper-outline" size={14} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{item.feedlabel ?? 'News'}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}> · {new Date(item.date * 1000).toLocaleDateString('it-IT')}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                {item.gioco ? (
+                  // game tag — tap to open the game card
+                  <Pressable onPress={() => item.id_gioco && router.push(`/game/${item.id_gioco}`)}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary + '22', borderColor: colors.primary, borderWidth: 1, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, maxWidth: '70%' }}>
+                    <Ionicons name="game-controller" size={11} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800' }} numberOfLines={1}>{item.gioco}</Text>
+                  </Pressable>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="newspaper-outline" size={14} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>{item.feedlabel ?? 'News'}</Text>
+                  </View>
+                )}
+                <Text style={{ color: colors.textMuted, fontSize: 11 }}>{new Date(item.date * 1000).toLocaleDateString('it-IT')}</Text>
               </View>
               <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>{item.title}</Text>
               <Text numberOfLines={3} style={{ color: colors.textMuted, fontSize: 13, marginTop: 6 }}>{stripHtml(item.contents)}</Text>
