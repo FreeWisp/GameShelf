@@ -232,4 +232,20 @@ export const igdbService = {
     if (!rows[0]) return null;
     return (await enrich(rows))[0];
   },
+
+  /**
+   * Deterministic match by Steam appid via IGDB external_games (the only
+   * reliable way: title search often returns a DLC/edition instead of the base
+   * game, e.g. "Cities: Skylines" → "…- Green Cities"). external_game_source 1
+   * = Steam (the old `category` field is deprecated).
+   */
+  async findBySteamAppid(appid) {
+    if (!igdbEnabled || !appid) return null;
+    const rows = await igdbQuery(
+      'games',
+      `${FIELDS} where external_games.uid = "${appid}" & external_games.external_game_source = 1; limit 1;`,
+    ).catch(() => []);
+    if (!rows[0]) return null;
+    return (await enrich(rows))[0];
+  },
 };

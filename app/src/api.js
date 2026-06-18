@@ -46,20 +46,29 @@ export function steamLoginUrl(returnUrl) {
   return `${API_URL}/auth/steam/login?link=${encodeURIComponent(inMemoryToken ?? '')}&return=${encodeURIComponent(returnUrl)}`;
 }
 
-async function request(path, { method = 'GET', body, auth = true } = {}) {
+async function request(path, { method = 'GET', body, auth = true, timeout = 20000 } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && inMemoryToken) headers.Authorization = `Bearer ${inMemoryToken}`;
 
   let res;
+  // Abort slow requests so the UI fails fast with a clear message instead of
+  // hanging (e.g. phone on a different network than the backend).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
     });
-  } catch {
-    // Network-level failure (backend down, wrong IP, no wifi…)
+  } catch (e) {
+    if (e?.name === 'AbortError') {
+      throw new Error('Il server non risponde. Verifica che il backend sia avviato e che il telefono sia sulla stessa rete.');
+    }
     throw new Error('Impossibile raggiungere il server. Controlla che il backend sia avviato.');
+  } finally {
+    clearTimeout(timer);
   }
   const text = await res.text();
   let data = {};

@@ -102,10 +102,14 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// GET /games/:id — full detail card (description served in Italian, cached)
+// GET /games/:id — full detail card. Lazily completes IGDB metadata for
+// Steam-created rows, then serves the description in Italian (both cached).
 router.get('/:id', async (req, res) => {
-  const game = gameService.getById(Number(req.params.id));
+  let game = gameService.getById(Number(req.params.id));
   if (!game) return res.status(404).json({ error: 'Gioco non trovato' });
+  try {
+    if (game.steam_appid && !game.igdb_id) game = await gameService.ensureSteamEnriched(game.id_gioco);
+  } catch { /* keep lightweight row */ }
   try {
     const it = await gameService.ensureItalianDescription(game.id_gioco);
     if (it) game.descrizione = it;

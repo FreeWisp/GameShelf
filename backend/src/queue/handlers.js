@@ -2,10 +2,9 @@ import queue from './messageQueue.js';
 import db from '../db/index.js';
 import { igdbService } from '../services/igdbService.js';
 import { steamService } from '../services/steamService.js';
-import { gameService } from '../services/gameService.js';
+import { gameService, matchSteamGame } from '../services/gameService.js';
 import { epicService } from '../services/epicService.js';
 import { pushService } from '../services/pushService.js';
-import { similarity } from '../utils/levenshtein.js';
 
 /**
  * Register every long-running / external-facing task as a queue handler.
@@ -92,18 +91,16 @@ export function registerHandlers() {
        ORDER BY id_gioco DESC LIMIT ?`,
     ).all(limit);
 
-    const norm = (s = '') => s.replace(/[™®©]/g, '').trim().toLowerCase();
     let enriched = 0;
     for (const row of rows) {
       try {
-        const results = await igdbService.search(row.titolo, 1);
-        const top = results?.[0];
-        if (top && (norm(top.titolo) === norm(row.titolo) || similarity(norm(top.titolo), norm(row.titolo)) >= 0.85)) {
-          gameService.upsert({ ...top, steam_appid: row.steam_appid });
-          enriched++;
-        }
+        const data = await matchSteamGame(row);
+        if (data) { gameService.upsert({ ...data, steam_appid: row.steam_appid }); enriched++; }
       } catch { /* best effort, keep going */ }
     }
+    // Keep draining the backlog across passes as long as we make progress; the
+    // enriched>0 guard naturally stops once only unmatchable titles remain.
+    if (enriched > 0 && rows.length === limit) queue.enqueueOnce('steam_enrich', { limit });
     return { candidates: rows.length, enriched };
   });
 

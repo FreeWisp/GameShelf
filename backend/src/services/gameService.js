@@ -1,6 +1,7 @@
 import db from '../db/index.js';
 import { rankByCloseness, similarity } from '../utils/levenshtein.js';
 import { translateService } from './translateService.js';
+import { igdbService } from './igdbService.js';
 
 const SELECT_WITH_SAGA =
   'SELECT g.*, s.nome_saga AS saga FROM Gioco g LEFT JOIN Saga s ON s.id_saga = g.id_saga';
@@ -29,6 +30,21 @@ function getOrCreateSaga(nome) {
   if (existing) return existing.id_saga;
   const info = db.prepare('INSERT INTO Saga (nome_saga) VALUES (?)').run(nome);
   return info.lastInsertRowid;
+}
+
+// Find the IGDB game for a Steam-created catalogue row: try the deterministic
+// appid mapping first, then fall back to a title search with similarity guard.
+export async function matchSteamGame(row) {
+  if (row.steam_appid) {
+    const byId = await igdbService.findBySteamAppid(row.steam_appid).catch(() => null);
+    if (byId) return byId;
+  }
+  const norm = (s = '') => s.replace(/[™®©]/g, '').trim().toLowerCase();
+  const results = await igdbService.search(row.titolo, 5).catch(() => []);
+  const best = results
+    .map((g) => ({ g, sim: similarity(norm(g.titolo), norm(row.titolo)) }))
+    .sort((a, b) => b.sim - a.sim)[0];
+  return best && (norm(best.g.titolo) === norm(row.titolo) || best.sim >= 0.82) ? best.g : null;
 }
 
 function rowToGame(row) {
@@ -102,6 +118,18 @@ export const gameService = {
 
   getById(id) {
     return rowToGame(db.prepare(`${SELECT_WITH_SAGA} WHERE g.id_gioco = ?`).get(id));
+  },
+
+  // Lazily fill IGDB metadata for a Steam-created row the moment the user opens
+  // it (so cover/description/platforms/languages are never permanently empty).
+  async ensureSteamEnriched(id) {
+    const row = db.prepare('SELECT id_gioco, titolo, steam_appid, igdb_id FROM Gioco WHERE id_gioco = ?').get(id);
+    if (!row || row.igdb_id || !row.steam_appid) return this.getById(id);
+    try {
+      const data = await matchSteamGame(row);
+      if (data) this.upsert({ ...data, steam_appid: row.steam_appid });
+    } catch { /* keep the lightweight row on failure */ }
+    return this.getById(id);
   },
 
   // Translate the (English) IGDB description to Italian once and cache it.

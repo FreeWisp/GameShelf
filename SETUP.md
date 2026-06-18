@@ -52,8 +52,18 @@ npx expo start
 Apri con **Expo Go** (QR), un emulatore Android, o `w` per il web.
 
 - **Emulatore Android**: il backend è raggiunto automaticamente via `10.0.2.2:4000`.
-- **Dispositivo fisico**: l'app auto-rileva l'IP del PC dev. In alternativa imposta
-  `EXPO_PUBLIC_API_URL=http://<IP-DEL-PC>:4000` prima di `expo start`.
+- **Dispositivo fisico (stessa Wi-Fi del PC)**: l'app auto-rileva l'IP del PC dev. In
+  alternativa imposta `EXPO_PUBLIC_API_URL=http://<IP-DEL-PC>:4000` prima di `expo start`.
+
+> ⚠️ **Il telefono deve essere sulla stessa rete Wi-Fi del PC.** Se il telefono è su **4G**
+> o su una Wi-Fi diversa, Expo Go non riesce a scaricare l'app (errore *"request timed out"*
+> / `IOException`) perché l'IP `192.168.x.x` è privato e irraggiungibile. Per testare da
+> remoto servono **due tunnel pubblici**:
+> 1. **Metro**: `npx expo start --tunnel` (richiede `@expo/ngrok`).
+> 2. **Backend**: esponilo con un tunnel (es. `npx localtunnel --port 4000` o `ngrok http 4000`)
+>    e avvia l'app con `EXPO_PUBLIC_API_URL=<url-pubblico-backend> npx expo start --tunnel`.
+>
+> La via più semplice per una demo resta **stesso Wi-Fi**.
 
 ### Risoluzione problemi
 
