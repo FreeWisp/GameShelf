@@ -77,10 +77,11 @@ export default function Profile() {
       const { jobId } = await api.steamPair(sid);
       const result = await waitForJob(jobId, { timeoutMs: 120000 });
       await refresh();
+      const added = (result?.linked ?? 0) + (result?.restored ?? 0);
       if (result?.privacy && result.privacy !== 'public') {
         Alert.alert('Profilo Steam privato', 'Steam non permette di leggere i giochi di questo account: rendi pubblici i "dettagli di gioco" e riprova.');
-      } else if ((result?.linked ?? 0) > 0) {
-        Alert.alert('Sincronizzazione completata', `${result.linked} nuovi giochi importati (${result.owned} posseduti su Steam).`);
+      } else if (added > 0) {
+        Alert.alert('Sincronizzazione completata', `${added} giochi aggiornati nella libreria (${result.owned} posseduti su Steam).`);
       } else {
         Alert.alert('Libreria già aggiornata', `Nessun nuovo gioco da importare (${result?.owned ?? 0} posseduti su Steam).`);
       }

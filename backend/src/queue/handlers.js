@@ -51,7 +51,12 @@ export function registerHandlers() {
     // PHASE 1 (fast): link EVERY owned game right away using lightweight
     // catalogue entries (Steam capsule cover). No IGDB calls here, so even an
     // 85-game library syncs in seconds instead of a minute.
-    let linked = 0;
+    //
+    // Steam is the SOURCE OF TRUTH for ownership: new games are added, and games
+    // the user had previously un-owned ("non lo possiedo più") but that Steam
+    // still reports as owned are RESTORED to owned. We never touch the user's
+    // own edits (status, favourite, notes) — only the `owned` fact.
+    let linked = 0, restored = 0;
     for (const o of owned) {
       let game = db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(o.appid);
       if (!game) {
@@ -63,14 +68,16 @@ export function registerHandlers() {
           popularity: Math.round((o.playtime_forever ?? 0) / 60),
         });
       }
-      const existing = db.prepare('SELECT 1 FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, game.id_gioco);
-      // NON-DESTRUCTIVE sync: only add genuinely new games. Existing entries are
-      // left untouched — the user's choices always win over the Steam default
-      // (status, "non lo possiedo più", favourite, wishlist, notes are kept).
+      const existing = db.prepare('SELECT id_possesso, owned FROM Libreria_Utente WHERE id_utente=? AND id_gioco=?').get(userId, game.id_gioco);
       if (!existing) {
         db.prepare(`INSERT INTO Libreria_Utente (id_utente, id_gioco, store_acquisto, stato_avanzamento, owned, status_auto)
                     VALUES (?, ?, 'steam', ?, 1, 1)`).run(userId, game.id_gioco, o.playtime_forever > 0 ? 'in_corso' : 'da_iniziare');
         linked++;
+      } else if (!existing.owned) {
+        // Re-assert ownership (Steam still owns it); preserve status/fav/notes.
+        db.prepare("UPDATE Libreria_Utente SET owned = 1, in_wishlist = 0, store_acquisto = COALESCE(store_acquisto, 'steam') WHERE id_possesso = ?")
+          .run(existing.id_possesso);
+        restored++;
       }
     }
 
@@ -78,7 +85,7 @@ export function registerHandlers() {
     // the sync the user is waiting on stays fast.
     queue.enqueueOnce('steam_enrich', { limit: 40 });
 
-    return { owned: owned.length, linked, privacy };
+    return { owned: owned.length, linked, restored, privacy };
   });
 
   // Fill IGDB metadata for catalogue rows created by Steam syncs (igdb_id still
