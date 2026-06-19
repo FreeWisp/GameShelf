@@ -8,17 +8,22 @@ import queue from '../queue/messageQueue.js';
 const router = Router();
 
 // Suggest a correction ("forse cercavi…") only when the query looks like a typo:
-// no result actually contains the query, but the closest title is similar enough.
+// no result actually matches the query, but the closest title is similar enough.
+// Comparison is also done on a normalized form (letters/digits only) so missing
+// spaces/punctuation are tolerated ("FinalFantasy" → "Final Fantasy").
+const normTitle = (s = '') => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 function didYouMean(query, results) {
   const q = query.toLowerCase().trim();
-  if (!results.length) return null;
+  const qn = normTitle(query);
+  if (!results.length || !qn) return null;
   const found = results.some((g) => {
     const t = g.titolo.toLowerCase();
-    return t === q || t.includes(q);
+    return t === q || t.includes(q) || normTitle(g.titolo).includes(qn);
   });
   if (found) return null;
   const top = results[0];
-  return similarity(q, top.titolo) >= 0.5 ? top.titolo : null;
+  const sim = Math.max(similarity(q, top.titolo), similarity(qn, normTitle(top.titolo)));
+  return sim >= 0.5 && normTitle(top.titolo) !== qn ? top.titolo : null;
 }
 
 // GET /games/popular — most popular games (populated via the queue on first use)

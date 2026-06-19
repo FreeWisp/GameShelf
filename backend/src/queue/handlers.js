@@ -6,6 +6,13 @@ import { gameService, matchSteamGame } from '../services/gameService.js';
 import { epicService } from '../services/epicService.js';
 import { pushService } from '../services/pushService.js';
 
+// Keep at most one row per id_gioco, preserving order (safety net so the search
+// list can never contain two items with the same key/cover).
+function dedupById(games) {
+  const seen = new Set();
+  return games.filter((g) => g && !seen.has(g.id_gioco) && seen.add(g.id_gioco));
+}
+
 /**
  * Register every long-running / external-facing task as a queue handler.
  * Routes never call IGDB/Steam directly — they enqueue one of these messages,
@@ -22,7 +29,7 @@ export function registerHandlers() {
   // Search IGDB for a query and persist the results into the shared catalogue.
   queue.register('igdb_search', async ({ query, limit = 20 }) => {
     const games = await igdbService.search(query, limit);
-    const saved = games.map((g) => gameService.upsert(g));
+    const saved = dedupById(games.map((g) => gameService.upsert(g)));
     return { games: saved };
   });
 
@@ -30,7 +37,7 @@ export function registerHandlers() {
   // persisted so the catalogue keeps growing.
   queue.register('igdb_suggest', async ({ query, limit = 10 }) => {
     const games = await igdbService.suggest(query, limit);
-    const saved = games.map((g) => gameService.upsert(g));
+    const saved = dedupById(games.map((g) => gameService.upsert(g)));
     return { games: saved };
   });
 

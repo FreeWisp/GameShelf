@@ -65,17 +65,20 @@ export const gameService = {
 
   /**
    * Insert or update a game into the shared catalogue.
-   * Match order: igdb_id → steam_appid → exact title (case-insensitive).
-   * The appid/title fallbacks are essential: games created by the Steam sync
-   * have no igdb_id yet, and an IGDB search for the same game must UPDATE that
-   * row (keeping every user's library/achievements) instead of duplicating it.
+   * Match order: igdb_id → steam_appid → (title, ONLY if neither id is known).
+   *
+   * The title match is a LAST RESORT: matching by title when an igdb_id is
+   * present would collapse distinct IGDB games that share a name (e.g. the many
+   * "Final Fantasy" listings) into one row — causing duplicate ids, shared
+   * covers, and preview≠detail mismatches. It's used only for manual entries
+   * that have no stable identifier at all.
    */
   upsert(g) {
     const id_saga = getOrCreateSaga(g.saga);
-    const existing =
-      (g.igdb_id ? db.prepare('SELECT id_gioco FROM Gioco WHERE igdb_id = ?').get(g.igdb_id) : null)
-      ?? (g.steam_appid ? db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(g.steam_appid) : null)
-      ?? db.prepare('SELECT id_gioco FROM Gioco WHERE titolo = ? COLLATE NOCASE').get(g.titolo);
+    let existing = null;
+    if (g.igdb_id) existing = db.prepare('SELECT id_gioco FROM Gioco WHERE igdb_id = ?').get(g.igdb_id);
+    if (!existing && g.steam_appid) existing = db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(g.steam_appid);
+    if (!existing && !g.igdb_id && !g.steam_appid) existing = db.prepare('SELECT id_gioco FROM Gioco WHERE titolo = ? COLLATE NOCASE').get(g.titolo);
 
     const fields = {
       igdb_id: g.igdb_id ?? null,
