@@ -28,6 +28,7 @@ export default function Diary() {
   const [spoiler, setSpoiler] = useState(false);
   const [media, setMedia] = useState(null); // data-URI of the attached photo
   const [saving, setSaving] = useState(false);
+  const [viewer, setViewer] = useState(null); // full-screen image being viewed
 
   // Attach a photo from the gallery or straight from the camera.
   const pickPhoto = async (fromCamera) => {
@@ -122,7 +123,12 @@ export default function Diary() {
                   <>
                     <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>{item.testo}</Text>
                     {item.media_url ? (
-                      <Image source={{ uri: item.media_url }} style={{ width: '100%', height: 180, borderRadius: 10, marginTop: 10 }} resizeMode="cover" />
+                      <Pressable onPress={() => setViewer(item.media_url)} style={{ marginTop: 10 }}>
+                        <Image source={{ uri: item.media_url }} style={{ width: '100%', height: 180, borderRadius: 10 }} resizeMode="cover" />
+                        <View style={{ position: 'absolute', bottom: 8, right: 8, backgroundColor: '#000A', borderRadius: 999, padding: 5 }}>
+                          <Ionicons name="expand" size={14} color="#fff" />
+                        </View>
+                      </Pressable>
                     ) : null}
                   </>
                 ) : (
@@ -190,6 +196,16 @@ export default function Diary() {
             </View>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Full-screen image viewer — opens the photo uncropped */}
+      <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
+        <Pressable onPress={() => setViewer(null)} style={{ flex: 1, backgroundColor: '#000E', justifyContent: 'center' }}>
+          {viewer ? <Image source={{ uri: viewer }} style={{ width: '100%', height: '80%' }} resizeMode="contain" /> : null}
+          <Pressable onPress={() => setViewer(null)} style={{ position: 'absolute', top: 50, right: 20, backgroundColor: '#0008', borderRadius: 999, padding: 10 }}>
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

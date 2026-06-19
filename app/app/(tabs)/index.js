@@ -62,18 +62,17 @@ export default function Home() {
       ? a.game.titolo.localeCompare(b.game.titolo)
       : (b.data_aggiunta ?? '').localeCompare(a.data_aggiunta ?? ''));
 
-  // ----- folder create / rename modal -----
+  // ----- folder create / rename modal (folders addressed by id) -----
   const openCreate = () => { setFolderName(''); setFolderEmoji('📚'); setFolderModal({ mode: 'create' }); };
   const openRename = (folder) => {
-    const name = typeof folder === 'string' ? folder : folder.nome_cartella;
-    const emoji = typeof folder === 'string' ? (folders.find((f) => f.nome_cartella === name)?.emoji ?? '📚') : (folder.emoji ?? '📚');
-    setFolderName(name); setFolderEmoji(emoji); setFolderModal({ mode: 'rename', target: name });
+    setFolderName(folder.nome_cartella); setFolderEmoji(folder.emoji ?? '📚');
+    setFolderModal({ mode: 'rename', id: folder.id_cartella });
   };
   const submitFolder = async () => {
     const name = folderName.trim();
     if (!name) { Alert.alert('Nome mancante', 'Dai un nome alla mensola prima di salvare.'); return; }
     try {
-      if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.target, name, folderEmoji);
+      if (folderModal?.mode === 'rename') await api.renameFolder(folderModal.id, name, folderEmoji);
       else await api.createFolder(name, folderEmoji);
       setFolderModal(null);
       load();
@@ -81,18 +80,18 @@ export default function Home() {
   };
   const folderActions = (folder) => Alert.alert(folder.nome_cartella, 'Cosa vuoi fare con questa mensola?', [
     { text: 'Rinomina / cambia emoji', onPress: () => openRename(folder) },
-    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(folder.nome_cartella); load(); } },
+    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(folder.id_cartella); load(); } },
     { text: 'Annulla', style: 'cancel' },
   ]);
 
-  // ----- reorder (move up/down, persisted) -----
+  // ----- reorder (move up/down, persisted by id) -----
   const moveFolder = async (index, dir) => {
     const next = index + dir;
     if (next < 0 || next >= folders.length) return;
     const arr = [...folders];
     [arr[index], arr[next]] = [arr[next], arr[index]];
     setFolders(arr); // optimistic
-    try { await api.reorderFolders(arr.map((f) => f.nome_cartella)); }
+    try { await api.reorderFolders(arr.map((f) => f.id_cartella)); }
     catch (e) { Alert.alert('Errore', e.message); load(); }
   };
 
@@ -195,7 +194,7 @@ export default function Home() {
           }
           renderItem={({ item, index }) => (
             <Pressable
-              onPress={() => !reorderMode && router.push(`/folder/${encodeURIComponent(item.nome_cartella)}`)}
+              onPress={() => !reorderMode && router.push(`/folder/${item.id_cartella}`)}
               onLongPress={() => !reorderMode && folderActions(item)}
               style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: reorderMode ? colors.primary : colors.border }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

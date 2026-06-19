@@ -35,7 +35,7 @@ function RootNavigator() {
         <Stack.Screen name="register" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="game/[id]" options={{ presentation: 'card' }} />
-        <Stack.Screen name="folder/[name]" />
+        <Stack.Screen name="folder/[id]" />
         <Stack.Screen name="collection/[type]" />
         <Stack.Screen name="diary/[possesso]" />
         <Stack.Screen name="profile" />

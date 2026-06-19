@@ -101,15 +101,16 @@ export const api = {
   updateNote: (possessoId, noteId, b) => request(`/library/${possessoId}/diary/${noteId}`, { method: 'PATCH', body: b }),
   deleteNote: (possessoId, noteId) => request(`/library/${possessoId}/diary/${noteId}`, { method: 'DELETE' }),
 
-  // folders (HashMap)
+  // folders (HashMap) — addressed by numeric id (names may contain any char)
   folders: () => request('/folders'),
+  folder: (id) => request(`/folders/${id}`),
   createFolder: (nome_cartella, emoji) => request('/folders', { method: 'POST', body: { nome_cartella, emoji } }),
-  renameFolder: (name, nuovo_nome, emoji) => request(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: { nuovo_nome, emoji } }),
-  setFolderEmoji: (name, emoji) => request(`/folders/${encodeURIComponent(name)}`, { method: 'PATCH', body: { emoji } }),
+  renameFolder: (id, nuovo_nome, emoji) => request(`/folders/${id}`, { method: 'PATCH', body: { nuovo_nome, emoji } }),
+  setFolderEmoji: (id, emoji) => request(`/folders/${id}`, { method: 'PATCH', body: { emoji } }),
   reorderFolders: (order) => request('/folders/reorder', { method: 'PATCH', body: { order } }),
-  deleteFolder: (name) => request(`/folders/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-  addToFolder: (name, game) => request(`/folders/${encodeURIComponent(name)}/games`, { method: 'POST', body: { game } }),
-  removeFromFolder: (name, gameId) => request(`/folders/${encodeURIComponent(name)}/games/${gameId}`, { method: 'DELETE' }),
+  deleteFolder: (id) => request(`/folders/${id}`, { method: 'DELETE' }),
+  addToFolder: (id, game) => request(`/folders/${id}/games`, { method: 'POST', body: { game } }),
+  removeFromFolder: (id, gameId) => request(`/folders/${id}/games/${gameId}`, { method: 'DELETE' }),
 
   // news (auth optional: when logged in they are personalized on your library)
   news: () => request('/news'),

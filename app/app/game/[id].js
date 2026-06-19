@@ -101,7 +101,7 @@ export default function GameDetail() {
         ...folders.map((f) => ({
           text: `${f.nome_cartella} (${f.count})`,
           onPress: async () => {
-            await api.addToFolder(f.nome_cartella, { id_gioco: game.id_gioco, titolo: game.titolo, copertina_url: game.copertina_url });
+            await api.addToFolder(f.id_cartella, { id_gioco: game.id_gioco, titolo: game.titolo, copertina_url: game.copertina_url });
             Alert.alert('Fatto', `Aggiunto a "${f.nome_cartella}"`);
           },
         })),

@@ -13,10 +13,11 @@ const SORTS = [
 ];
 
 export default function FolderDetail() {
-  const { name } = useLocalSearchParams();
-  const folderName = decodeURIComponent(String(name));
+  const { id } = useLocalSearchParams();
+  const folderId = Number(id);
   const { colors } = useTheme();
   const router = useRouter();
+  const [name, setName] = useState('');
   const [games, setGames] = useState([]);
   const [emoji, setEmoji] = useState('📚');
   const [loading, setLoading] = useState(true);
@@ -24,13 +25,13 @@ export default function FolderDetail() {
 
   const load = useCallback(async () => {
     try {
-      const { folders } = await api.folders();
-      const folder = folders.find((f) => f.nome_cartella === folderName);
+      const { folder } = await api.folder(folderId);
+      setName(folder?.nome_cartella ?? '');
       setGames(folder?.giochi ?? []);
       setEmoji(folder?.emoji ?? '📚');
     } catch (e) { Alert.alert('Errore', e.message); }
     finally { setLoading(false); }
-  }, [folderName]);
+  }, [folderId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -44,21 +45,21 @@ export default function FolderDetail() {
   const removeGame = (g) => Alert.alert(g.titolo, 'Rimuovere da questa mensola?', [
     { text: 'Annulla', style: 'cancel' },
     { text: 'Rimuovi', style: 'destructive', onPress: async () => {
-      try { await api.removeFromFolder(folderName, g.id_gioco); load(); }
+      try { await api.removeFromFolder(folderId, g.id_gioco); load(); }
       catch (e) { Alert.alert('Errore', e.message); }
     } },
   ]);
 
-  const deleteFolder = () => Alert.alert(folderName, 'Eliminare l\'intera mensola?', [
+  const deleteFolder = () => Alert.alert(name || 'Mensola', 'Eliminare l\'intera mensola?', [
     { text: 'Annulla', style: 'cancel' },
-    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(folderName); router.back(); } },
+    { text: 'Elimina', style: 'destructive', onPress: async () => { await api.deleteFolder(folderId); router.back(); } },
   ]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10 }}>
         <Pressable onPress={() => router.back()}><Ionicons name="arrow-back" size={22} color={colors.text} /></Pressable>
-        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, flex: 1 }} numberOfLines={1}>{emoji} {folderName}</Text>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 18, flex: 1 }} numberOfLines={1}>{emoji} {name}</Text>
         <Pressable onPress={deleteFolder} hitSlop={10}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>
       </View>
 

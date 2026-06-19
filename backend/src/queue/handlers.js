@@ -58,10 +58,11 @@ export function registerHandlers() {
     // own edits (status, favourite, notes) — only the `owned` fact.
     let linked = 0, restored = 0;
     for (const o of owned) {
+      if (!o.appid) continue;
       let game = db.prepare('SELECT id_gioco FROM Gioco WHERE steam_appid = ?').get(o.appid);
       if (!game) {
         game = gameService.upsert({
-          titolo: o.name, steam_appid: o.appid,
+          titolo: o.name || `Steam App ${o.appid}`, steam_appid: o.appid,
           // proper portrait capsule instead of the tiny pixelated icon
           copertina_url: `https://cdn.cloudflare.steamstatic.com/steam/apps/${o.appid}/library_600x900.jpg`,
           store_links: [{ store: 'steam', name: 'Steam', url: `https://store.steampowered.com/app/${o.appid}` }],
