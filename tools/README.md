@@ -28,7 +28,9 @@ node tools/benchmark.js --compare
 
 | Opzione | Default | Significato |
 |---|---|---|
-| `--label` | *(obbligatoria)* | nome della rete misurata (`wifi`, `4g`, `5g`, …) |
+| `--label` | *(obbligatoria)* | nome della condizione misurata (`wifi-buono`, `cell-debole`, …) |
+| `--signal` | — | qualità del segnale rilevata, salvata nel CSV (es. `"RSRP -109 dBm"`) |
+| `--note` | — | annotazione libera sulla condizione (es. `"piano interrato"`) |
 | `--target` | `internal` | `internal` (API GameShelf), `external` (Steam/Epic/CDN IGDB), `all` |
 | `--url` | `http://localhost:4000` | base URL del backend |
 | `--runs` | `30` | campioni per endpoint |

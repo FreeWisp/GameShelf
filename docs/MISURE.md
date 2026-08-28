@@ -164,6 +164,78 @@ end-to-end può essere confrontato con la stima per verificarne la coerenza.
 
 ---
 
+## 5.1 Esperimento aggiuntivo: effetto della qualità del collegamento radio
+
+Le prestazioni non dipendono solo dal *tipo* di rete (Wi-Fi o cellulare) ma dalla **qualità
+del collegamento**. Introdurla come variabile indipendente permette di spiegare la varianza
+dei tempi di risposta invece di limitarsi a constatarla.
+
+### 5.1.1 Grandezze da rilevare
+
+| Rete | Grandezza | Significato | Ordini di grandezza indicativi |
+|---|---|---|---|
+| Wi-Fi | **RSSI** (dBm) | potenza del segnale ricevuto | ≈ −40 ottimo · ≈ −67 buono · ≈ −80 scarso |
+| LTE / 5G | **RSRP** (dBm) | potenza del segnale di riferimento | ≈ −80 ottimo · ≈ −100 medio · ≈ −110 e oltre scarso |
+| LTE / 5G | **RSRQ** (dB), **SINR** (dB) | qualità e rapporto segnale/interferenza | SINR > 20 ottimo · < 5 scarso |
+
+Sono valori **negativi**: più vicini a zero, migliore è il segnale. La scala è logaritmica,
+quindi una differenza di 10 dB corrisponde a un fattore 10 di potenza.
+
+### 5.1.2 Come rilevarle
+
+- **Android**: *Impostazioni → Info sul telefono → Stato SIM* riporta potenza del segnale e
+  tecnologia; app come *Network Cell Info Lite* o *Cellular-Z* mostrano RSRP, RSRQ, SINR,
+  banda e identificativo della cella in tempo reale.
+- **iOS**: il *Field Test Mode* (`*3001#12345#*`) espone dati limitati e variabili secondo la
+  versione; su iPhone è più affidabile rilevare il segnale dal terminale Android usato come
+  hotspot.
+- **Windows (Wi-Fi)**: `netsh wlan show interfaces` riporta il campo *Segnale* in percentuale;
+  la conversione approssimata in dBm è `RSSI ≈ (percentuale / 2) − 100`.
+
+Registra il valore **all'inizio e alla fine** di ogni sessione di misura e riporta l'intervallo:
+il segnale non è costante.
+
+### 5.1.3 Condizioni suggerite (quattro sessioni)
+
+| Etichetta | Rete | Come ottenerla |
+|---|---|---|
+| `wifi-buono` | Wi-Fi | in prossimità dell'access point, banda 5 GHz |
+| `wifi-debole` | Wi-Fi | a distanza, con ostacoli (muri), banda 2,4 GHz |
+| `cell-buono` | 4G/5G | all'aperto o in prossimità di una finestra, RSRP alto |
+| `cell-debole` | 4G/5G | in ambiente schermato (interrato, locale interno), RSRP basso |
+
+Le condizioni si annotano direttamente nel CSV:
+
+```bash
+node tools/benchmark.js --label cell-debole --target external --runs 40 \
+  --signal "RSRP -109 dBm, SINR 2 dB" --note "piano interrato, 4G"
+```
+
+### 5.1.4 Accorgimenti per non invalidare il confronto
+
+- **Collega il PC allo smartphone via USB tethering**, non tramite hotspot Wi-Fi: altrimenti
+  il percorso contiene due tratte radio (PC↔telefono in Wi-Fi e telefono↔rete cellulare) e
+  non è chiaro quale delle due determini il risultato.
+- **Cambia una variabile alla volta.** Se passi contemporaneamente da 5 GHz a 2,4 GHz *e*
+  aumenti la distanza, l'effetto osservato non è attribuibile a nessuna delle due cause.
+- **Esegui le sessioni ravvicinate nel tempo**, per ridurre l'effetto della congestione
+  variabile dei servizi remoti e della rete dell'operatore.
+- **Riporta la tecnologia effettivamente agganciata** (LTE, LTE-A, NR NSA/SA): il terminale
+  può cambiarla durante la misura, ed è un fattore rilevante quanto il livello di segnale.
+- Ricorda che la potenza del segnale **non determina da sola** le prestazioni: congestione
+  della cella, numero di utenti serviti e backhaul dell'operatore incidono e non sono
+  osservabili dal terminale. Questo va dichiarato tra i limiti.
+
+### 5.1.5 Come mantenere l'analisi proporzionata
+
+L'obiettivo non è caratterizzare la rete radio, ma **spiegare il comportamento
+dell'applicazione**. È sufficiente: il sottoinsieme di endpoint esterni (tre scenari), una
+tabella con le quattro condizioni, un grafico di confronto e una discussione che colleghi il
+degrado osservato alle scelte architetturali (cache, riduzione dei round-trip, riuso della
+connessione). Circa una pagina e mezza in tutto.
+
+---
+
 ## 6. Dati di riferimento già raccolti (Wi-Fi)
 
 Utili come termine di paragone. `runs = 15`, connessione nuova per ogni richiesta salvo dove

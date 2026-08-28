@@ -25,6 +25,9 @@
  *
  * Options:
  *   --label <name>     network being measured (wifi | 4g | 5g | ...). Required.
+ *   --signal <s>       measured signal quality, recorded in the CSV
+ *                      (e.g. "RSRP -108 dBm" for cellular, "RSSI -72 dBm" for Wi-Fi)
+ *   --note <s>         free-text condition (e.g. "cantina", "accanto al router")
  *   --target <t>       internal (default) | external | all
  *   --url <base>       GameShelf backend base URL (default http://localhost:4000)
  *   --runs <n>         samples per endpoint (default 30)
@@ -45,12 +48,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------- CLI parsing
 function parseArgs(argv) {
-  const a = { target: 'internal', url: 'http://localhost:4000', runs: 30, warmup: 3, keepalive: false, out: path.join(__dirname, 'results'), compare: false };
+  const a = { target: 'internal', url: 'http://localhost:4000', runs: 30, warmup: 3, keepalive: false, out: path.join(__dirname, 'results'), compare: false, signal: '', note: '' };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--compare') a.compare = true;
     else if (k === '--keepalive') a.keepalive = true;
     else if (k === '--label') a.label = argv[++i];
+    else if (k === '--signal') a.signal = argv[++i];
+    else if (k === '--note') a.note = argv[++i];
     else if (k === '--target') a.target = argv[++i];
     else if (k === '--url') a.url = argv[++i].replace(/\/$/, '');
     else if (k === '--runs') a.runs = Number(argv[++i]);
@@ -164,6 +169,13 @@ function stats(values) {
 
 const r2 = (x) => (x === null || x === undefined ? '' : Math.round(x * 100) / 100);
 
+// CSV escaping: free-text fields (signal, note) may contain commas or quotes.
+const csvCell = (v) => {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+const toCsv = (rows) => rows.map((r) => r.map(csvCell).join(',')).join('\n');
+
 // ------------------------------------------------------------- scenarios
 function internalScenarios(base, token) {
   const auth = token ? { Authorization: `Bearer ${token}` } : {};
@@ -254,13 +266,13 @@ async function main() {
   console.log(`\nGameShelf benchmark — rete: ${args.label} | target: ${args.target} | ${args.runs} campioni/endpoint | keep-alive: ${args.keepalive ? 'sì' : 'no'}`);
   console.log(`Backend: ${args.url}\n`);
 
-  const rawRows = [['label', 'endpoint', 'run', 'status', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
-  const sumRows = [['label', 'endpoint', 'nota', 'n', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
+  const rawRows = [['label', 'signal', 'note', 'endpoint', 'run', 'status', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
+  const sumRows = [['label', 'signal', 'note', 'endpoint', 'scenario', 'n', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
 
   for (const sc of scenarios) {
     process.stdout.write(`  ${sc.name.padEnd(22)} `);
     const samples = await runScenario(sc, { runs: args.runs, warmup: args.warmup, keepAlive: args.keepalive });
-    samples.forEach((s, i) => rawRows.push([args.label, sc.name, i + 1, s.status, s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
+    samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, s.status, s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
 
     const okS = samples.filter((s) => s.ok);
     const st = stats(okS.map((s) => s.total));
@@ -272,14 +284,14 @@ async function main() {
     const kbps = st.p50 > 0 ? (bytes * 8) / st.p50 : 0; // bits per ms == kbit/s
 
     console.log(`p50 ${String(r2(st.p50)).padStart(8)} ms | p95 ${String(r2(st.p95)).padStart(8)} ms | jitter ${String(r2(st.jitter)).padStart(7)} ms | ${String(bytes).padStart(7)} B`);
-    sumRows.push([args.label, sc.name, sc.note, st.n, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
+    sumRows.push([args.label, args.signal, args.note, sc.name, sc.note, st.n, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
   }
 
   const tag = `${args.label}_${args.target}${args.keepalive ? '_keepalive' : ''}`;
   const rawFile = path.join(args.out, `raw_${tag}.csv`);
   const sumFile = path.join(args.out, `summary_${tag}.csv`);
-  fs.writeFileSync(rawFile, rawRows.map((r) => r.join(',')).join('\n'), 'utf8');
-  fs.writeFileSync(sumFile, sumRows.map((r) => r.join(',')).join('\n'), 'utf8');
+  fs.writeFileSync(rawFile, toCsv(rawRows), 'utf8');
+  fs.writeFileSync(sumFile, toCsv(sumRows), 'utf8');
   console.log(`\nCSV scritti:\n  ${sumFile}   (riepilogo, per le tabelle)\n  ${rawFile}   (campioni singoli, per boxplot/istogrammi)\n`);
 }
 
@@ -288,17 +300,44 @@ function compare(dir) {
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.startsWith('summary_')) : [];
   if (!files.length) return console.log(`Nessun summary_*.csv in ${dir}. Esegui prima almeno una misura.`);
 
+  // Minimal CSV line parser: handles quoted fields containing commas.
+  const parseLine = (line) => {
+    const out = [];
+    let cur = '', inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQuotes) {
+        if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+        else if (c === '"') inQuotes = false;
+        else cur += c;
+      } else if (c === '"') inQuotes = true;
+      else if (c === ',') { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+    out.push(cur);
+    return out;
+  };
+
   const rows = [];
   for (const f of files) {
     const lines = fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n');
-    const head = lines[0].split(',');
+    const head = parseLine(lines[0]);
     for (const line of lines.slice(1)) {
-      const cells = line.split(',');
+      const cells = parseLine(line);
       rows.push(Object.fromEntries(head.map((h, i) => [h, cells[i]])));
     }
   }
   const labels = [...new Set(rows.map((r) => r.label))];
   const endpoints = [...new Set(rows.map((r) => r.endpoint))];
+
+  // Recap of the conditions each label was measured under.
+  const conds = labels
+    .map((l) => { const r = rows.find((x) => x.label === l); return [l, [r?.signal, r?.note].filter(Boolean).join(' — ')]; })
+    .filter(([, c]) => c);
+  if (conds.length) {
+    console.log('\nCondizioni di misura');
+    conds.forEach(([l, c]) => console.log(`  ${l.padEnd(18)} ${c}`));
+  }
 
   console.log('\nConfronto mediane (total_p50, ms)\n');
   console.log('endpoint'.padEnd(24) + labels.map((l) => l.padStart(12)).join('') + '   delta');
@@ -318,7 +357,7 @@ function compare(dir) {
     out.push([ep, ...vals.map((v) => (v === null ? '' : r2(v))), r2(delta), r2(pctDelta)]);
   }
   const file = path.join(dir, 'comparison.csv');
-  fs.writeFileSync(file, out.map((r) => r.join(',')).join('\n'), 'utf8');
+  fs.writeFileSync(file, toCsv(out), 'utf8');
   console.log(`\nCSV di confronto: ${file}\n`);
 }
 
