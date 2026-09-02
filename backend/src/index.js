@@ -22,6 +22,20 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '15mb' })); // diary photos travel as base64
 
+// Request log: one line per call with its duration. Without it the terminal
+// stays silent and the queue's behaviour is invisible while developing.
+app.use((req, res, next) => {
+  const t0 = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    const clock = new Date().toTimeString().slice(0, 8);
+    console.log(
+      `${clock}  ${req.method.padEnd(6)} ${req.originalUrl}  -> ${res.statusCode}  ${ms.toFixed(0)} ms`,
+    );
+  });
+  next();
+});
+
 app.get('/health', (req, res) => res.json({
   ok: true,
   igdb: igdbEnabled ? 'live' : 'offline-seed',

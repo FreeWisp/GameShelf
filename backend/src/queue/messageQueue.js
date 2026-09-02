@@ -44,6 +44,7 @@ class MessageQueue extends EventEmitter {
       `INSERT INTO job_queue (id, type, payload, status) VALUES (?, ?, ?, 'queued')`,
     ).run(id, type, JSON.stringify(payload));
     this.emit('enqueued', id);
+    log(`+ ${type} accodato (${short(id)})`);
     this._pump();
     return id;
   }
@@ -143,19 +144,28 @@ class MessageQueue extends EventEmitter {
         job.id,
       );
       this.activeWorkers++;
+      log(
+        `> ${job.type} avviato (${short(job.id)})`
+        + `${wait > 0 ? `, differito di ${Math.round(wait)} ms` : ''}`
+        + `, attivi ${this.activeWorkers}/${this.concurrency}`,
+      );
       setTimeout(() => this._run(job), wait);
     }
   }
 
   async _run(job) {
     const handler = this.handlers.get(job.type);
+    const t0 = process.hrtime.bigint();
+    const elapsed = () => Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
     try {
       const payload = safeParse(job.payload);
       const result = await handler(payload, job);
       db.prepare(
         `UPDATE job_queue SET status='done', result=?, attempts=attempts+1, updated_at=datetime('now') WHERE id=?`,
       ).run(JSON.stringify(result ?? null), job.id);
+      log(`v ${job.type} completato (${short(job.id)}) in ${elapsed()} ms`);
     } catch (err) {
+      log(`x ${job.type} FALLITO (${short(job.id)}) dopo ${elapsed()} ms: ${err?.message ?? err}`);
       db.prepare(
         `UPDATE job_queue SET status='failed', error=?, attempts=attempts+1, updated_at=datetime('now') WHERE id=?`,
       ).run(String(err?.message ?? err), job.id);
@@ -178,6 +188,14 @@ class MessageQueue extends EventEmitter {
       byStatus,
     };
   }
+}
+
+// Compact queue log. Makes load levelling observable: when jobs pile up the
+// dispatch line reports the delay imposed by the minimum interval.
+const short = (id) => String(id).slice(0, 8);
+function log(msg) {
+  const clock = new Date().toTimeString().slice(0, 8);
+  console.log(`${clock}  [queue] ${msg}`);
 }
 
 function safeParse(s) {
