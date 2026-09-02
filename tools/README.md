@@ -57,6 +57,8 @@ node tools/benchmark.js --compare
 | `kbps` | throughput stimato (byte del payload / tempo totale) |
 | `tls_ver` | versione TLS negoziata: serve a leggere `tls_p50` in numero di round-trip (TLS 1.3 = 1 RTT, TLS 1.2 = 2 RTT) |
 | `reused` / `reused_n` | quante richieste hanno riusato un socket già aperto: verifica che `--keepalive` abbia davvero avuto effetto |
+| `ts_iso` / `ts_epoch_ms` | istante di avvio di ogni singola richiesta (ora locale con offset, e epoch in ms): permette di allineare i campioni a una cattura di livello radio o a un trace di pacchetti |
+| `t_start_iso` / `t_end_iso` | finestra temporale della serie di misure su un endpoint: è l'intervallo da ritagliare nel log esterno |
 
 ### Note metodologiche
 

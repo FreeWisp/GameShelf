@@ -82,6 +82,9 @@ function timedRequest({ url, method = 'GET', headers = {}, body = null, keepAliv
     const u = new URL(url);
     const lib = u.protocol === 'https:' ? https : http;
     const agent = keepAlive ? keepAliveAgents[u.protocol] : false;
+    // Monotonic clock for durations; wall clock only to align samples with
+    // external logs (radio-layer captures, packet traces).
+    const wallStart = Date.now();
     const t0 = process.hrtime.bigint();
     const ms = (a, b) => (b === null || a === null ? null : Number(b - a) / 1e6);
     let tDns = null, tConn = null, tTls = null, tFirstByte = null;
@@ -106,6 +109,7 @@ function timedRequest({ url, method = 'GET', headers = {}, body = null, keepAliv
           resolve({
             ok: res.statusCode >= 200 && res.statusCode < 400,
             status: res.statusCode,
+            wallStart,
             reusedSocket,
             tlsVersion,
             bytes,
@@ -131,7 +135,7 @@ function timedRequest({ url, method = 'GET', headers = {}, body = null, keepAliv
     });
 
     const fail = (err) => {
-      resolve({ ok: false, status: 0, error: err.message, bytes: 0, reusedSocket, tlsVersion: '', dns: null, tcp: null, tls: null, ttfb: null, download: null, total: null });
+      resolve({ ok: false, status: 0, error: err.message, bytes: 0, wallStart, reusedSocket, tlsVersion: '', dns: null, tcp: null, tls: null, ttfb: null, download: null, total: null });
     };
     req.on('timeout', () => { req.destroy(new Error('timeout')); });
     req.on('error', fail);
@@ -170,6 +174,19 @@ function stats(values) {
     stdev: Math.sqrt(variance),
     jitter,
   };
+}
+
+// Local ISO 8601 with UTC offset: lets a sample be lined up with a radio-layer
+// capture (Network Signal Guru, QXDM, tcpdump) without timezone guesswork.
+function isoLocal(epochMs) {
+  const d = new Date(epochMs);
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const p2 = (n) => String(Math.floor(Math.abs(n))).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`
+    + `T${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`
+    + `.${String(d.getMilliseconds()).padStart(3, '0')}`
+    + `${sign}${p2(off / 60)}:${p2(off % 60)}`;
 }
 
 const r2 = (x) => (x === null || x === undefined ? '' : Math.round(x * 100) / 100);
@@ -271,13 +288,13 @@ async function main() {
   console.log(`\nGameShelf benchmark — rete: ${args.label} | target: ${args.target} | ${args.runs} campioni/endpoint | keep-alive: ${args.keepalive ? 'sì' : 'no'}`);
   console.log(`Backend: ${args.url}\n`);
 
-  const rawRows = [['label', 'signal', 'note', 'endpoint', 'run', 'status', 'reused', 'tls_ver', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
-  const sumRows = [['label', 'signal', 'note', 'endpoint', 'scenario', 'n', 'reused_n', 'tls_ver', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
+  const rawRows = [['label', 'signal', 'note', 'endpoint', 'run', 'ts_iso', 'ts_epoch_ms', 'status', 'reused', 'tls_ver', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
+  const sumRows = [['label', 'signal', 'note', 'endpoint', 'scenario', 't_start_iso', 't_end_iso', 'n', 'reused_n', 'tls_ver', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
 
   for (const sc of scenarios) {
     process.stdout.write(`  ${sc.name.padEnd(22)} `);
     const samples = await runScenario(sc, { runs: args.runs, warmup: args.warmup, keepAlive: args.keepalive });
-    samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, s.status, s.reusedSocket ? 1 : 0, s.tlsVersion ?? '', s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
+    samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, isoLocal(s.wallStart), s.wallStart, s.status, s.reusedSocket ? 1 : 0, s.tlsVersion ?? '', s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
 
     const okS = samples.filter((s) => s.ok);
     const st = stats(okS.map((s) => s.total));
@@ -286,12 +303,15 @@ async function main() {
     const tls = stats(okS.map((s) => s.tls));
     const bytes = okS.length ? Math.round(okS.reduce((a, s) => a + s.bytes, 0) / okS.length) : 0;
     const reusedN = okS.filter((s) => s.reusedSocket).length;
+    // Session window: the interval to look up in a radio-layer capture.
+    const tStart = samples.length ? isoLocal(samples[0].wallStart) : '';
+    const tEnd = samples.length ? isoLocal(samples[samples.length - 1].wallStart) : '';
     const tlsVer = okS.find((s) => s.tlsVersion)?.tlsVersion ?? '';
     if (!st) { console.log('FALLITO (nessuna risposta valida)'); continue; }
     const kbps = st.p50 > 0 ? (bytes * 8) / st.p50 : 0; // bits per ms == kbit/s
 
     console.log(`p50 ${String(r2(st.p50)).padStart(8)} ms | p95 ${String(r2(st.p95)).padStart(8)} ms | jitter ${String(r2(st.jitter)).padStart(7)} ms | ${String(bytes).padStart(7)} B`);
-    sumRows.push([args.label, args.signal, args.note, sc.name, sc.note, st.n, reusedN, tlsVer, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
+    sumRows.push([args.label, args.signal, args.note, sc.name, sc.note, tStart, tEnd, st.n, reusedN, tlsVer, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
   }
 
   const tag = `${args.label}_${args.target}${args.keepalive ? '_keepalive' : ''}`;
