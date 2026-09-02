@@ -234,6 +234,34 @@ tabella con le quattro condizioni, un grafico di confronto e una discussione che
 degrado osservato alle scelte architetturali (cache, riduzione dei round-trip, riuso della
 connessione). Circa una pagina e mezza in tutto.
 
+### 5.1.6 Due regimi di latenza da non confondere
+
+I campioni sono intervallati da `--spacing` millisecondi (120 per impostazione predefinita).
+Con una spaziatura breve il collegamento resta attivo per tutta la serie, quindi la misura
+restituisce la **latenza a collegamento già stabilito**. È il regime corretto per confrontare
+condizioni radio fra loro, ma è sistematicamente ottimistico rispetto all'uso reale
+dell'applicazione, che è sporadico: l'utente apre GameShelf, fa una ricerca, torna dopo minuti.
+
+Il secondo regime si misura aumentando la spaziatura, così che fra un campione e il successivo
+il collegamento torni inattivo e ogni richiesta ne includa il costo di ripresa:
+
+```bash
+node tools/benchmark.js --label 4g-attivo    --target external --runs 40
+node tools/benchmark.js --label 4g-sporadico --target external --runs 10 --spacing 30000
+```
+
+La differenza fra le due mediane è una grandezza che riguarda la progettazione
+dell'applicazione, non solo la rete. Riportarla — o quantomeno dichiarare quale dei due regimi
+si è misurato — è ciò che rende il dato interpretabile.
+
+### 5.1.7 Allineamento con una cattura di livello radio
+
+Il CSV grezzo registra per ogni campione `ts_iso` (ora locale con offset esplicito) e
+`ts_epoch_ms`; il riepilogo registra la finestra `t_start_iso` / `t_end_iso` di ciascuna serie.
+Sono le uniche chiavi disponibili per allineare le misure applicative a un log raccolto con uno
+strumento di livello radio, che non condivide con esse alcun identificatore. Prima di iniziare,
+verificare che l'orologio del terminale e quello dell'host che misura siano sincronizzati.
+
 ---
 
 ## 6. Dati di riferimento già raccolti (Wi-Fi)
