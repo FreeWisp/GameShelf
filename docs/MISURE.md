@@ -295,3 +295,27 @@ misura 6.3 sulla rete cellulare.
 - **Cache applicativa**: i tempi di `game_detail` presuppongono la descrizione italiana già
   tradotta e memorizzata; la prima richiesta per un gioco mai aperto è più lenta di alcuni
   ordini di grandezza (traduzione remota).
+
+---
+
+## 8. Rappresentazione grafica dei risultati
+
+I CSV prodotti dallo strumento sono direttamente utilizzabili per le figure dell'elaborato.
+Lo script `tools/plots.py` li legge e genera tre grafici in PDF (vettoriale) e PNG:
+
+```bash
+python tools/plots.py
+```
+
+| Figura | Che cosa mostra | Perché è utile |
+|---|---|---|
+| `composizione_tempi` | barre impilate con le tre componenti del tempo di risposta: connessione (DNS+TCP+TLS), attesa del server, trasferimento | è la rappresentazione più efficace del §2.1: rende visibile *dove* si consuma il tempo, non solo quanto |
+| `boxplot_condizioni` | mediana, quartili, baffi e valori anomali del tempo totale, una serie per condizione di rete | mostra la **dispersione**: due reti possono avere mediane simili e stabilità molto diversa |
+| `confronto_condizioni` | barre affiancate delle mediane per endpoint e per condizione | sintetizza il confronto Wi-Fi / cellulare in un colpo d'occhio |
+
+**Nota sul boxplot.** È la figura più informativa quando si confrontano condizioni radio,
+perché rende evidente ciò che la sola mediana nasconde: al degradare del segnale non cresce
+soltanto il valore centrale, ma soprattutto l'ampiezza della scatola e la lunghezza dei baffi,
+cioè l'imprevedibilità del tempo di risposta. È la controparte grafica del `total_jitter`.
+
+Il boxplot e il confronto affiancato richiedono almeno due sessioni con `--label` diverse.
