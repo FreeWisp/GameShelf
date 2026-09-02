@@ -32,6 +32,9 @@
  *   --url <base>       GameShelf backend base URL (default http://localhost:4000)
  *   --runs <n>         samples per endpoint (default 30)
  *   --warmup <n>       discarded samples before measuring (default 3)
+ *   --spacing <ms>     pause between samples (default 120). Use a long value
+ *                      (e.g. 30000) to let the link go idle between requests,
+ *                      so the cost of resuming it is measured too.
  *   --keepalive        reuse the TCP connection (mimics the app); default: new
  *                      connection each time, so handshake cost is measured too
  *   --out <dir>        output directory (default tools/results)
@@ -48,7 +51,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------- CLI parsing
 function parseArgs(argv) {
-  const a = { target: 'internal', url: 'http://localhost:4000', runs: 30, warmup: 3, keepalive: false, out: path.join(__dirname, 'results'), compare: false, signal: '', note: '' };
+  const a = { target: 'internal', url: 'http://localhost:4000', runs: 30, warmup: 3, spacing: 120, keepalive: false, out: path.join(__dirname, 'results'), compare: false, signal: '', note: '' };
   for (let i = 2; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--compare') a.compare = true;
@@ -60,6 +63,7 @@ function parseArgs(argv) {
     else if (k === '--url') a.url = argv[++i].replace(/\/$/, '');
     else if (k === '--runs') a.runs = Number(argv[++i]);
     else if (k === '--warmup') a.warmup = Number(argv[++i]);
+    else if (k === '--spacing') a.spacing = Number(argv[++i]);
     else if (k === '--out') a.out = argv[++i];
   }
   return a;
@@ -253,7 +257,7 @@ async function login(base) {
   } catch { return null; }
 }
 
-async function runScenario(sc, { runs, warmup, keepAlive }) {
+async function runScenario(sc, { runs, warmup, keepAlive, spacing }) {
   const samples = [];
   for (let i = 0; i < warmup + runs; i++) {
     const res = await timedRequest({
@@ -261,7 +265,12 @@ async function runScenario(sc, { runs, warmup, keepAlive }) {
       headers: sc.headers ?? {}, body: sc.body ?? null, keepAlive,
     });
     if (i >= warmup) samples.push(res);
-    await new Promise((r) => setTimeout(r, 120)); // spacing: avoid burst effects
+    // Spacing between samples. The default (120 ms) avoids burst effects while
+    // keeping the link active for the whole run. A long spacing (tens of
+    // seconds) lets the link go idle between samples, so the cost of resuming
+    // it is included in the measurement — that is the difference between
+    // "latency on an active link" and "latency as a sporadic user sees it".
+    await new Promise((r) => setTimeout(r, spacing));
   }
   return samples;
 }
@@ -293,7 +302,7 @@ async function main() {
 
   for (const sc of scenarios) {
     process.stdout.write(`  ${sc.name.padEnd(22)} `);
-    const samples = await runScenario(sc, { runs: args.runs, warmup: args.warmup, keepAlive: args.keepalive });
+    const samples = await runScenario(sc, { runs: args.runs, warmup: args.warmup, keepAlive: args.keepalive, spacing: args.spacing });
     samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, isoLocal(s.wallStart), s.wallStart, s.status, s.reusedSocket ? 1 : 0, s.tlsVersion ?? '', s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
 
     const okS = samples.filter((s) => s.ok);

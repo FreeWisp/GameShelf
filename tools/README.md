@@ -35,6 +35,7 @@ node tools/benchmark.js --compare
 | `--url` | `http://localhost:4000` | base URL del backend |
 | `--runs` | `30` | campioni per endpoint |
 | `--warmup` | `3` | campioni iniziali scartati |
+| `--spacing` | `120` | pausa in ms fra un campione e il successivo. Con un valore alto (es. `30000`) il collegamento torna inattivo fra una richiesta e l'altra, e la misura include il costo di riprenderlo |
 | `--keepalive` | off | riusa la connessione (simula il comportamento reale dell'app) |
 | `--out` | `tools/results` | cartella di output |
 
