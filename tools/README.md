@@ -55,6 +55,8 @@ node tools/benchmark.js --compare
 | `total_p50` | tempo end-to-end, download del payload incluso |
 | `total_jitter` | variazione media tra campioni consecutivi: instabilità del collegamento |
 | `kbps` | throughput stimato (byte del payload / tempo totale) |
+| `tls_ver` | versione TLS negoziata: serve a leggere `tls_p50` in numero di round-trip (TLS 1.3 = 1 RTT, TLS 1.2 = 2 RTT) |
+| `reused` / `reused_n` | quante richieste hanno riusato un socket già aperto: verifica che `--keepalive` abbia davvero avuto effetto |
 
 ### Note metodologiche
 

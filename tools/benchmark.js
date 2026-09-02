@@ -99,10 +99,15 @@ function timedRequest({ url, method = 'GET', headers = {}, body = null, keepAliv
         res.on('end', () => {
           const tEnd = process.hrtime.bigint();
           if (tFirstByte === null) tFirstByte = tEnd; // empty body
+          // Negotiated TLS version: needed to read the `tls` phase in RTT terms
+          // (TLS 1.3 completes in 1 round-trip, TLS 1.2 in 2).
+          const tlsVersion = typeof res.socket?.getProtocol === 'function'
+            ? (res.socket.getProtocol() ?? '') : '';
           resolve({
             ok: res.statusCode >= 200 && res.statusCode < 400,
             status: res.statusCode,
             reusedSocket,
+            tlsVersion,
             bytes,
             dns: ms(t0, tDns),
             tcp: tDns && tConn ? ms(tDns, tConn) : ms(t0, tConn),
@@ -126,7 +131,7 @@ function timedRequest({ url, method = 'GET', headers = {}, body = null, keepAliv
     });
 
     const fail = (err) => {
-      resolve({ ok: false, status: 0, error: err.message, bytes: 0, dns: null, tcp: null, tls: null, ttfb: null, download: null, total: null });
+      resolve({ ok: false, status: 0, error: err.message, bytes: 0, reusedSocket, tlsVersion: '', dns: null, tcp: null, tls: null, ttfb: null, download: null, total: null });
     };
     req.on('timeout', () => { req.destroy(new Error('timeout')); });
     req.on('error', fail);
@@ -266,13 +271,13 @@ async function main() {
   console.log(`\nGameShelf benchmark — rete: ${args.label} | target: ${args.target} | ${args.runs} campioni/endpoint | keep-alive: ${args.keepalive ? 'sì' : 'no'}`);
   console.log(`Backend: ${args.url}\n`);
 
-  const rawRows = [['label', 'signal', 'note', 'endpoint', 'run', 'status', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
-  const sumRows = [['label', 'signal', 'note', 'endpoint', 'scenario', 'n', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
+  const rawRows = [['label', 'signal', 'note', 'endpoint', 'run', 'status', 'reused', 'tls_ver', 'bytes', 'dns_ms', 'tcp_ms', 'tls_ms', 'ttfb_ms', 'download_ms', 'total_ms']];
+  const sumRows = [['label', 'signal', 'note', 'endpoint', 'scenario', 'n', 'reused_n', 'tls_ver', 'bytes', 'tcp_p50', 'tls_p50', 'ttfb_p50', 'total_min', 'total_p50', 'total_p95', 'total_p99', 'total_max', 'total_mean', 'total_stdev', 'total_jitter', 'kbps']];
 
   for (const sc of scenarios) {
     process.stdout.write(`  ${sc.name.padEnd(22)} `);
     const samples = await runScenario(sc, { runs: args.runs, warmup: args.warmup, keepAlive: args.keepalive });
-    samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, s.status, s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
+    samples.forEach((s, i) => rawRows.push([args.label, args.signal, args.note, sc.name, i + 1, s.status, s.reusedSocket ? 1 : 0, s.tlsVersion ?? '', s.bytes, r2(s.dns), r2(s.tcp), r2(s.tls), r2(s.ttfb), r2(s.download), r2(s.total)]));
 
     const okS = samples.filter((s) => s.ok);
     const st = stats(okS.map((s) => s.total));
@@ -280,11 +285,13 @@ async function main() {
     const tcp = stats(okS.map((s) => s.tcp));
     const tls = stats(okS.map((s) => s.tls));
     const bytes = okS.length ? Math.round(okS.reduce((a, s) => a + s.bytes, 0) / okS.length) : 0;
+    const reusedN = okS.filter((s) => s.reusedSocket).length;
+    const tlsVer = okS.find((s) => s.tlsVersion)?.tlsVersion ?? '';
     if (!st) { console.log('FALLITO (nessuna risposta valida)'); continue; }
     const kbps = st.p50 > 0 ? (bytes * 8) / st.p50 : 0; // bits per ms == kbit/s
 
     console.log(`p50 ${String(r2(st.p50)).padStart(8)} ms | p95 ${String(r2(st.p95)).padStart(8)} ms | jitter ${String(r2(st.jitter)).padStart(7)} ms | ${String(bytes).padStart(7)} B`);
-    sumRows.push([args.label, args.signal, args.note, sc.name, sc.note, st.n, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
+    sumRows.push([args.label, args.signal, args.note, sc.name, sc.note, st.n, reusedN, tlsVer, bytes, r2(tcp?.p50), r2(tls?.p50), r2(ttfb?.p50), r2(st.min), r2(st.p50), r2(st.p95), r2(st.p99), r2(st.max), r2(st.mean), r2(st.stdev), r2(st.jitter), r2(kbps)]);
   }
 
   const tag = `${args.label}_${args.target}${args.keepalive ? '_keepalive' : ''}`;
