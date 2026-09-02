@@ -68,3 +68,28 @@ node tools/benchmark.js --compare
   costo di elaborazione del backend.
 - La rete cellulare varia con copertura, orario e cella servente: ripetere la misura in
   momenti diversi e usare `--runs` elevato (≥ 40) rende p95/p99 più stabili.
+
+---
+
+## `plots.py` — grafici delle misure
+
+Legge i CSV prodotti da `benchmark.js` e genera le figure pronte per l'elaborato, in PDF
+(vettoriale, per la stampa) e PNG (anteprima).
+
+```bash
+python tools/plots.py                          # legge tools/results
+python tools/plots.py --dir altra/cartella --out figure/
+```
+
+Richiede `pandas` e `matplotlib`.
+
+### Figure generate (in `tools/results/figure/`)
+
+| File | Contenuto |
+|---|---|
+| `composizione_tempi` | barre impilate: quota di connessione (DNS+TCP+TLS), attesa del server e trasferimento per ciascun endpoint |
+| `boxplot_condizioni` | dispersione dei campioni per condizione di rete: mediana, quartili, valori anomali |
+| `confronto_condizioni` | barre affiancate: mediana del tempo totale per endpoint e per rete |
+
+Il boxplot richiede almeno due condizioni misurate (due `--label` differenti) per essere
+significativo; il confronto affiancato viene prodotto solo in quel caso.

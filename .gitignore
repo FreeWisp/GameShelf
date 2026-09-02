@@ -22,3 +22,6 @@ backend/data/*.db-*
 
 # OS
 .DS_Store
+
+# Risultati delle misure (rigenerabili con benchmark.js + plots.py)
+tools/results/
